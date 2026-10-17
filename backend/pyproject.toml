@@ -1,0 +1,17 @@
+[project]
+name = "ai-analyst"
+version = "0.1.0"
+description = "AI-аналитик для малого бизнеса: загрузка данных, аналитика, прогноз"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E, W - стиль PEP 8; F - ошибки (неиспользуемые импорты и т.п.); I - порядок импортов; UP - современный синтаксис
+select = ["E", "W", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
