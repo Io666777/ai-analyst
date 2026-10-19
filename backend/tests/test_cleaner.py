@@ -78,7 +78,7 @@ def dirty_table() -> pd.DataFrame:
     )
 
 
-MAPPING = {"Дата": "date", "Товар": "object", "Сумма": "money"}
+MAPPING = {"Дата": "date", "Товар": "object", "Сумма": "amount"}
 
 
 def test_clean_result(dirty_table):

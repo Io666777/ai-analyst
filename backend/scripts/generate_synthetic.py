@@ -193,7 +193,7 @@ def generate_shop(rng: np.random.Generator) -> None:
             "Номенклатура": "object",
             "Группа": "category",
             "Количество": "quantity",
-            "Сумма": "money",
+            "Сумма": "amount",
         },
     )
 
@@ -221,7 +221,7 @@ def generate_cafe(rng: np.random.Generator) -> None:
             "Позиция": "object",
             "Раздел меню": "category",
             "Кол-во, шт": "quantity",
-            "Выручка, руб": "money",
+            "Выручка, руб": "amount",
         },
     )
 
@@ -239,7 +239,7 @@ def generate_salon(rng: np.random.Generator) -> None:
             "Мастер": "executor",
             "Клиент": "person",
             "Телефон": "phone",
-            "Стоимость": "money",
+            "Стоимость": "amount",
         },
     )
 

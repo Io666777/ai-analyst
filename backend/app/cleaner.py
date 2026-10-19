@@ -48,12 +48,13 @@ def strip_text(values: pd.Series) -> pd.Series:
 # Роли, которых здесь нет (phone, email, ignore), не трогаем
 CONVERTERS = {
     "date": to_date,
-    "money": to_number,
+    "amount": to_number,
     "quantity": to_number,
     "object": strip_text,
     "category": strip_text,
     "executor": strip_text,
     "person": strip_text,
+    "receipt": strip_text,  # номер чека - текст: "А-0012" или "00012" (нули в начале важны)
 }
 
 
