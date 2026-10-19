@@ -37,3 +37,55 @@ def drop_totals(df: pd.DataFrame, words: tuple[str, ...] = TOTAL_WORDS) -> pd.Da
     starts_with_total = text.apply(lambda column: column.str.startswith(words))
     is_total_row = starts_with_total.any(axis=1)  # True, если в строке есть хоть одно такое слово
     return df[~is_total_row]  # оставляем только строки, которые НЕ итоговые
+
+
+def strip_text(values: pd.Series) -> pd.Series:
+    # "  Капучино " -> "Капучино". Тип "string" сохраняет пустые значения пустыми, а не "nan"
+    return values.astype("string").str.strip()
+
+
+# Какую функцию применять к колонке с какой ролью.
+# Роли, которых здесь нет (phone, email, ignore), не трогаем
+CONVERTERS = {
+    "date": to_date,
+    "money": to_number,
+    "quantity": to_number,
+    "object": strip_text,
+    "category": strip_text,
+    "executor": strip_text,
+    "person": strip_text,
+}
+
+
+def clean(
+    df: pd.DataFrame,
+    mapping: dict[str, str],
+    total_words: tuple[str, ...] = TOTAL_WORDS,
+) -> tuple[pd.DataFrame, dict]:
+    # Чистит таблицу по словарю "колонка -> роль". Возвращает чистую таблицу и отчёт о чистке
+    missing = [column for column in mapping if column not in df.columns]
+    if missing:
+        raise ValueError(f"В таблице нет колонок: {', '.join(missing)}")
+
+    # 1. Убираем итоговые и полностью пустые строки
+    result = drop_totals(df, total_words).dropna(how="all").copy()
+    rows_after_totals = len(result)
+
+    # 2. Каждой колонке - своё преобразование по её роли
+    for column, role in mapping.items():
+        converter = CONVERTERS.get(role)
+        if converter:
+            result[column] = converter(result[column])
+
+    # 3. Строки без даты удаляем: событие без даты не привязать ко времени
+    date_columns = [column for column, role in mapping.items() if role == "date"]
+    result = result.dropna(subset=date_columns)
+
+    report = {
+        "строк_было": len(df),
+        "удалено_итоговых_и_пустых": len(df) - rows_after_totals,
+        "удалено_без_даты": rows_after_totals - len(result),
+        "строк_стало": len(result),
+        "пустых_значений": {column: int(result[column].isna().sum()) for column in mapping},
+    }
+    return result.reset_index(drop=True), report
