@@ -3,7 +3,15 @@
 import pandas as pd
 import pytest
 
-from app.model import EVENT_COLUMNS, KIND_SALE, KIND_STOCK, available_fields, to_events
+from app.model import (
+    EVENT_COLUMNS,
+    KIND_SALE,
+    KIND_STOCK,
+    available_fields,
+    extra_fields,
+    numeric_fields,
+    to_events,
+)
 
 MAPPING = {
     "Дата": "date",
@@ -73,3 +81,41 @@ def test_to_events_duplicate_role(cleaned_table):
 def test_available_fields(cleaned_table):
     events = to_events(cleaned_table, MAPPING)
     assert available_fields(events) == ["date", "object", "amount", "executor"]
+
+
+# ---------- дополнительные поля: признаки и показатели ----------
+
+
+@pytest.fixture
+def table_with_extras(cleaned_table) -> pd.DataFrame:
+    # Та же таблица + колонки, которых нет в каталоге основных полей
+    return cleaned_table.assign(Артикул=["00012", "А-7"], Скидка=[5.0, 0.0])
+
+
+EXTRA_MAPPING = {**MAPPING, "Артикул": "attribute", "Скидка": "measure"}
+
+
+def test_extras_kept_under_own_names(table_with_extras):
+    events = to_events(table_with_extras, EXTRA_MAPPING)
+    assert list(events.columns[: len(EVENT_COLUMNS)]) == EVENT_COLUMNS  # основные - первыми
+    assert extra_fields(events) == ["Артикул", "Скидка"]  # дополнительные - после них
+    assert events["Артикул"].tolist() == ["00012", "А-7"]
+
+
+def test_extras_in_available_and_numeric_fields(table_with_extras):
+    events = to_events(table_with_extras, EXTRA_MAPPING)
+    assert "Артикул" in available_fields(events)
+    assert numeric_fields(events) == ["amount", "Скидка"]  # артикул - текст, его не складывают
+
+
+def test_extras_name_clash(table_with_extras):
+    # Дополнительное поле не может называться как основное - иначе одно затрёт другое
+    table = table_with_extras.rename(columns={"Артикул": "amount"})
+    with pytest.raises(ValueError, match="amount"):
+        to_events(table, {**MAPPING, "amount": "attribute"})
+
+
+def test_personal_data_not_kept_as_extra(table_with_extras):
+    # Даже рядом с дополнительными полями клиент в модель не попадает
+    events = to_events(table_with_extras, EXTRA_MAPPING)
+    assert "Клиент" not in events.columns

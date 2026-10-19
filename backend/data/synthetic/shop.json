@@ -1,6 +1,8 @@
 {
   "Дата": "date",
+  "Артикул": "attribute",
   "Номенклатура": "object",
+  "Бренд": "attribute",
   "Группа": "category",
   "Количество": "quantity",
   "Сумма": "amount"

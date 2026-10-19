@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from app.model import available_fields
+from app.model import available_fields, extra_fields, numeric_fields
 
 # Понятное название периода -> код периода в pandas (ME - конец месяца, YE - конец года)
 PERIODS = {"день": "D", "неделя": "W", "месяц": "ME", "год": "YE"}
@@ -13,12 +13,19 @@ MONTH_NAMES = [
 ]  # fmt: skip
 
 
+def require_field(events: pd.DataFrame, field: str, numeric: bool = False) -> None:
+    # Проверка перед расчётом: поле есть в данных, а если нужно складывать - оно числовое
+    if field not in available_fields(events):
+        raise ValueError(f"В данных нет поля «{field}»")
+    if numeric and field not in numeric_fields(events):
+        raise ValueError(f"Поле «{field}» не числовое - его нельзя складывать")
+
+
 def by_period(events: pd.DataFrame, period: str = "месяц", value: str = "amount") -> pd.Series:
     # Сумма value (по умолчанию - выручка) за каждый период: день, неделю, месяц, год
     if period not in PERIODS:
         raise ValueError(f"Неизвестный период «{period}». Есть: {', '.join(PERIODS)}")
-    if value not in available_fields(events):
-        raise ValueError(f"В данных нет поля «{value}»")
+    require_field(events, value, numeric=True)
     # resample раскладывает строки по периодам по дате и складывает каждый период
     return events.set_index("date")[value].resample(PERIODS[period]).sum()
 
@@ -39,8 +46,7 @@ def compare_periods(
     value: str = "amount",
 ) -> dict:
     # Сравнивает два периода: было, стало, изменение в деньгах и в процентах
-    if value not in available_fields(events):
-        raise ValueError(f"В данных нет поля «{value}»")
+    require_field(events, value, numeric=True)
     before = period_total(events, *first, value=value)
     after = period_total(events, *second, value=value)
     change = after - before
@@ -121,13 +127,85 @@ def breakdown(
     top: int = 10,
     worst: bool = False,
 ) -> pd.DataFrame:
-    # Топ по полю by (товар, категория, мастер): сумма value и доля в общем итоге.
-    # worst=True - наоборот, худшие (с наименьшей суммой)
-    for field in (by, value):
-        if field not in available_fields(events):
-            raise ValueError(f"В данных нет поля «{field}»")
+    # Топ по полю by (товар, категория, мастер, любой признак - бренд, филиал...):
+    # сумма value и доля в общем итоге. worst=True - наоборот, худшие
+    require_field(events, by)
+    require_field(events, value, numeric=True)
 
     totals = events.groupby(by)[value].sum().sort_values(ascending=worst)
     share = totals / totals.sum() * 100  # доля от ВСЕГО итога, а не только от топа
     result = pd.DataFrame({value: totals.round(2), "доля_%": share.round(1)})
     return result.head(top)
+
+
+def find_items(events: pd.DataFrame, query: str) -> list[str]:
+    # Все товары, подходящие под запрос, без учёта регистра. Порядок поиска:
+    # 1) точное название, 2) точное значение признака (артикул, код), 3) часть названия
+    require_field(events, "object")
+    items = events["object"].dropna().unique()
+    text = query.strip().lower()
+
+    exact = [item for item in items if item.lower() == text]
+    if exact:
+        return exact
+
+    text_extras = [field for field in extra_fields(events) if field not in numeric_fields(events)]
+    for field in text_extras:
+        # fillna(False) - у строк без значения признака совпадения нет
+        matches = events[field].str.lower().eq(text).fillna(False)
+        found = events.loc[matches, "object"].dropna().unique()
+        if len(found):
+            return sorted(found)
+
+    return sorted(item for item in items if text in item.lower())
+
+
+def find_item(events: pd.DataFrame, query: str) -> str:
+    # Ровно один товар по запросу: "пиво лидское" -> "Пиво Лидское 0.5", "00-0001" -> по артикулу
+    found = find_items(events, query)
+    if not found:
+        raise ValueError(f"Не найдено ничего похожего на «{query}»")
+    if len(found) > 1:  # подходит несколько - не угадываем, а просим уточнить
+        raise ValueError(f"Под «{query}» подходит несколько: {', '.join(found)}. Уточните")
+    return found[0]
+
+
+def item_detail(
+    events: pd.DataFrame,
+    query: str,
+    period: str = "месяц",
+    all_matches: bool = False,
+) -> dict:
+    # Всё о товаре: итоги, доля в выручке, даты продаж, динамика, последний месяц.
+    # all_matches=True - все подходящие товары вместе ("всё пиво сразу")
+    fields = available_fields(events)
+    if all_matches:
+        items = find_items(events, query)
+        if not items:
+            raise ValueError(f"Не найдено ничего похожего на «{query}»")
+    else:
+        items = [find_item(events, query)]
+    sales = events[events["object"].isin(items)]  # только продажи этих товаров
+
+    detail = {
+        "товар": items[0] if len(items) == 1 else f"{query} (позиций: {len(items)})",
+        "позиции": items,
+        "первая_продажа": sales["date"].min(),
+        "последняя_продажа": sales["date"].max(),
+    }
+    if "amount" in fields:
+        # float() - обычное число Python вместо np.float64, чтобы красиво выводилось
+        item_amount = float(sales["amount"].sum())
+        detail["выручка"] = round(item_amount, 2)
+        detail["доля_выручки_%"] = round(item_amount / events["amount"].sum() * 100, 1)
+    if "quantity" in fields:
+        detail["количество"] = float(sales["quantity"].sum())
+
+    # Динамику считаем по деньгам, а если их нет - по штукам
+    value = "amount" if "amount" in fields else "quantity"
+    detail["динамика"] = by_period(sales, period, value)
+    try:
+        detail["последний_месяц"] = last_full_month_vs_previous(sales, value)
+    except ValueError:
+        detail["последний_месяц"] = None  # товар продаётся меньше двух полных месяцев
+    return detail

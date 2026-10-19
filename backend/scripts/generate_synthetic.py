@@ -34,10 +34,22 @@ SALON_START, SALON_DAYS = "2025-10-01", 365
 # товар: (группа, среднее количество в день, цена)
 SHOP_PRODUCTS = {
     "Пиво Лидское 0.5": ("Напитки", 40, 3.5),
+    "Пиво Аливария 0.5": ("Напитки", 20, 3.2),
+    "Пиво Крыніца 1.0": ("Напитки", 12, 5.4),
     "Вода Боржоми 0.5": ("Напитки", 25, 2.9),
     "Чипсы Lays 140г": ("Снеки", 18, 4.2),
     "Сухарики 3 корочки": ("Снеки", 22, 1.6),
     "Хлеб Нарочанский": ("Хлеб", 30, 1.9),
+}
+# товар: (артикул, бренд) - дополнительные признаки, как в выгрузках из 1С
+SHOP_ATTRIBUTES = {
+    "Пиво Лидское 0.5": ("00-0001", "Лидское"),
+    "Пиво Аливария 0.5": ("00-0002", "Аливария"),
+    "Пиво Крыніца 1.0": ("00-0003", "Крыніца"),
+    "Вода Боржоми 0.5": ("00-0010", "Боржоми"),
+    "Чипсы Lays 140г": ("00-0020", "Lays"),
+    "Сухарики 3 корочки": ("00-0021", "3 корочки"),
+    "Хлеб Нарочанский": ("00-0030", "Лидский хлебозавод"),
 }
 CAFE_PRODUCTS = {
     "Капучино": ("Кофе", 35, 6.5),
@@ -172,7 +184,9 @@ def generate_shop(rng: np.random.Generator) -> None:
     table = pd.DataFrame(
         {
             "Дата": sales["date"].dt.strftime("%d.%m.%Y"),
+            "Артикул": sales["object"].map(lambda name: SHOP_ATTRIBUTES[name][0]),
             "Номенклатура": sales["object"],
+            "Бренд": sales["object"].map(lambda name: SHOP_ATTRIBUTES[name][1]),
             "Группа": sales["category"],
             "Количество": sales["quantity"],
             "Сумма": sales["amount"],
@@ -190,7 +204,9 @@ def generate_shop(rng: np.random.Generator) -> None:
         "shop",
         {
             "Дата": "date",
+            "Артикул": "attribute",
             "Номенклатура": "object",
+            "Бренд": "attribute",
             "Группа": "category",
             "Количество": "quantity",
             "Сумма": "amount",
@@ -246,10 +262,11 @@ def generate_salon(rng: np.random.Generator) -> None:
 
 def main() -> None:
     SYNTHETIC_DIR.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(RANDOM_SEED)
-    generate_shop(rng)
-    generate_cafe(rng)
-    generate_salon(rng)
+    # У каждого бизнеса свой генератор случайных чисел: изменения в одном бизнесе
+    # (например, новый товар в магазине) не сдвигают данные остальных
+    generate_shop(np.random.default_rng(RANDOM_SEED))
+    generate_cafe(np.random.default_rng(RANDOM_SEED + 1))
+    generate_salon(np.random.default_rng(RANDOM_SEED + 2))
     for path in sorted(SYNTHETIC_DIR.glob("*.*")):
         print(f"{path.name:<12} {path.stat().st_size / 1024:>8.1f} КБ")
 

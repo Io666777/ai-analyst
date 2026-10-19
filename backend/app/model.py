@@ -7,7 +7,7 @@ KIND_SALE = "sale"  # продажа
 KIND_PURCHASE = "purchase"  # закупка
 KIND_STOCK = "stock"  # остаток на складе
 
-# Каталог полей: всё, что программа умеет анализировать, с описаниями.
+# Основные поля: у каждого особый смысл и своя логика в аналитике.
 # Описания пригодятся в интерфейсе, в промте нейросети и в тексте курсовой
 FIELDS = {
     "date": "дата и время события",
@@ -19,15 +19,21 @@ FIELDS = {
     "executor": "мастер, продавец, сотрудник",
 }
 
-# Колонки универсальной модели: все поля каталога + тип события
+# Дополнительные поля - любые другие колонки. Сохраняются под своим названием:
+# признак - текст, по нему группируют, фильтруют и ищут (артикул, бренд, филиал)
+# показатель - число, его складывают (скидка, себестоимость)
+ROLE_ATTRIBUTE = "attribute"
+ROLE_MEASURE = "measure"
+EXTRA_ROLES = (ROLE_ATTRIBUTE, ROLE_MEASURE)
+
+# Колонки модели: все основные поля + тип события. Дополнительные идут после них
 EVENT_COLUMNS = [*FIELDS, "kind"]
 
-# Роль колонки = название поля модели. Роль из каталога FIELDS попадает в модель,
-# остальные роли (person, phone, email, ignore) - нет
+# Роль колонки = название основного поля. Роли person, phone, email, ignore в модель не попадают
 
 
 def to_events(df: pd.DataFrame, mapping: dict[str, str], kind: str = KIND_SALE) -> pd.DataFrame:
-    # Очищенная таблица -> события универсальной модели (колонки EVENT_COLUMNS)
+    # Очищенная таблица -> события: основные поля (EVENT_COLUMNS) + дополнительные
     roles = [role for role in mapping.values() if role in FIELDS]
     if "date" not in roles:
         raise ValueError("Не указана колонка с датой")
@@ -35,14 +41,37 @@ def to_events(df: pd.DataFrame, mapping: dict[str, str], kind: str = KIND_SALE) 
     if duplicated:
         raise ValueError(f"Одна роль назначена нескольким колонкам: {', '.join(duplicated)}")
 
+    extras = [column for column, role in mapping.items() if role in EXTRA_ROLES]
+    clashes = [column for column in extras if column in EVENT_COLUMNS]
+    if clashes:
+        raise ValueError(f"Название совпадает с основным полем: {', '.join(clashes)}")
+
     # {"Дата чека": "date", "Выручка, руб": "amount", ...} - старое название -> новое
     renames = {column: role for column, role in mapping.items() if role in FIELDS}
     events = df[list(renames)].rename(columns=renames)  # берём нужные колонки и переименовываем
     events["kind"] = kind
     # reindex - ставит колонки в стандартном порядке; каких нет - появятся пустыми
-    return events.reindex(columns=EVENT_COLUMNS)
+    events = events.reindex(columns=EVENT_COLUMNS)
+    events[extras] = df[extras]  # дополнительные поля - под своими названиями, в конце
+    return events
+
+
+def extra_fields(events: pd.DataFrame) -> list[str]:
+    # Дополнительные поля: все колонки, которых нет среди основных
+    return [column for column in events.columns if column not in EVENT_COLUMNS]
 
 
 def available_fields(events: pd.DataFrame) -> list[str]:
-    # Какие поля каталога реально заполнены у этого бизнеса (хотя бы одно значение)
-    return [field for field in FIELDS if field in events and events[field].notna().any()]
+    # Какие поля реально заполнены у этого бизнеса (хотя бы одно значение):
+    # сначала основные из каталога, потом дополнительные
+    fields = [field for field in FIELDS if field in events] + extra_fields(events)
+    return [field for field in fields if events[field].notna().any()]
+
+
+def numeric_fields(events: pd.DataFrame) -> list[str]:
+    # Заполненные числовые поля - их можно складывать (выручка, количество, скидка...)
+    return [
+        field
+        for field in available_fields(events)
+        if field != "date" and pd.api.types.is_numeric_dtype(events[field])
+    ]

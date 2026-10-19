@@ -22,7 +22,8 @@ def read_mapping(file_name: str) -> dict[str, str]:
 @pytest.mark.parametrize("file_name", TEST_FILES)
 def test_prepare_events_structure(file_name):
     events, report = prepare_events(SYNTHETIC_DIR / file_name, read_mapping(file_name))
-    assert list(events.columns) == EVENT_COLUMNS
+    # Сначала основные колонки в стандартном порядке, после них - дополнительные (если есть)
+    assert list(events.columns[: len(EVENT_COLUMNS)]) == EVENT_COLUMNS
     assert events["date"].notna().all()  # у каждого события есть дата
     assert report["строк_стало"] == len(events)
     assert report["удалено_итоговых_и_пустых"] == 1  # строка "Итого"

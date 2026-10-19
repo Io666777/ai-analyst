@@ -55,6 +55,8 @@ CONVERTERS = {
     "executor": strip_text,
     "person": strip_text,
     "receipt": strip_text,  # номер чека - текст: "А-0012" или "00012" (нули в начале важны)
+    "attribute": strip_text,  # признак (артикул, бренд...) - текст, по той же причине
+    "measure": to_number,  # показатель (скидка, себестоимость...) - число
 }
 
 
