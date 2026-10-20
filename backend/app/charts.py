@@ -20,6 +20,11 @@ BAR_HEIGHT = 0.45  # сколько дюймов высоты рисунка н�
 MIN_BAR_FIGURE_HEIGHT = 2.5  # даже у топ-2 рисунок не ниже этого
 BAR_LABEL_SPACE = 1.3  # запас справа под подписи на столбцах: ось длиннее самого длинного на 30%
 
+FORECAST_COLOR = "#e8772e"  # прогноз - другим цветом, чтобы не спутать с фактом
+CORRIDOR_ALPHA = 0.2  # прозрачность полосы коридора
+HISTORY_PER_HORIZON = 2  # истории на графике вдвое больше, чем горизонт прогноза
+MIN_HISTORY_SHOWN = 60  # но не меньше 60 дней
+
 # Подпись оси по полю модели
 VALUE_LABELS = {"amount": "Выручка, р.", "quantity": "Количество, шт."}
 
@@ -89,4 +94,43 @@ def bar_chart(table: pd.DataFrame, title: str) -> Figure:
     axes.set_xlim(right=values.max() * BAR_LABEL_SPACE)  # место справа под подписи
     axes.xaxis.set_major_formatter(FuncFormatter(format_number))
     axes.grid(False, axis="y")  # горизонтальные линии сетки между столбцами не нужны
+    return figure
+
+
+def forecast_chart(
+    daily: pd.DataFrame,
+    forecast: pd.DataFrame,
+    title: str,
+    value: str = "amount",
+) -> Figure:
+    # Факт (конец истории) + прогноз + коридор + черта "сегодня" на стыке.
+    # daily - ряд по дням (to_daily), forecast - прогноз (make_forecast()["прогноз"])
+    figure, axes = new_axes(title)
+    shown_days = max(MIN_HISTORY_SHOWN, HISTORY_PER_HORIZON * len(forecast))
+    history = daily.tail(shown_days)  # вся история рядом с коротким прогнозом его "раздавит"
+
+    axes.plot(history["ds"], history["y"], color=LINE_COLOR, label="факт")
+    axes.plot(
+        forecast["ds"], forecast["yhat"], color=FORECAST_COLOR, linestyle="--", label="прогноз"
+    )
+    if "yhat_lower" in forecast:  # коридор есть не у всех моделей
+        axes.fill_between(
+            forecast["ds"],
+            forecast["yhat_lower"],
+            forecast["yhat_upper"],
+            color=FORECAST_COLOR,
+            alpha=CORRIDOR_ALPHA,
+            label="вероятный диапазон (80%)",
+        )
+    axes.axvline(history["ds"].iloc[-1], color="gray", linewidth=1)  # черта "сегодня"
+    axes.text(history["ds"].iloc[-1], 0, " сегодня", color="gray", va="bottom")
+
+    axes.set_ylabel(value_label(value))
+    axes.set_ylim(bottom=0)
+    axes.yaxis.set_major_formatter(FuncFormatter(format_number))
+    # Отметки строго на 1-е число каждого месяца - иначе подпись "сен 26" повторяется дважды
+    axes.xaxis.set_major_locator(mdates.MonthLocator())
+    axes.xaxis.set_major_formatter(FuncFormatter(format_month))
+    # Легенда под графиком в одну строку, чтобы не закрывать данные
+    axes.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
     return figure
