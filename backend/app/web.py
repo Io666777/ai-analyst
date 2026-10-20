@@ -4,12 +4,19 @@
     venv\\Scripts\\python.exe -m streamlit run app/web.py
 
 Streamlit при каждом клике выполняет этот файл заново, сверху вниз. Поэтому тяжёлое
-(чтение файла, подготовка, прогноз) запоминаем через st.cache_data: второй раз - мгновенно.
+(чтение файла, подготовка, прогноз) запоминаем: второй раз - мгновенно.
 Здесь только вывод на экран - все расчёты в готовых функциях из app/, как и в cli.py.
+
+Данные пользователя не хранятся: файл читается из временной папки, которая сразу
+удаляется, а всё запомненное живёт в памяти сессии и пропадает, когда закрывают вкладку.
 """
 
+import hashlib
 import json
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -24,14 +31,13 @@ from app.analytics import (
 )
 from app.charts import bar_chart, forecast_chart, line_chart
 from app.cli import ROLE_CHOICES, ROLE_IGNORE, mapping_path
-from app.config import BACKEND_DIR, CURRENCY, SYNTHETIC_DIR
+from app.config import CURRENCY, SYNTHETIC_DIR
 from app.forecast import COUNTRY, to_daily
 from app.forecast_report import COUNTRY_NAMES, money
 from app.loader import EXCEL_SUFFIXES, load
 from app.model import FIELDS, available_fields, exclude_objects, numeric_fields, suggest_exclusions
 from app.pipeline import STEP_FORECAST, make_forecast, prepare_table
 
-UPLOADS_DIR = BACKEND_DIR / "data" / "uploads"  # загруженные файлы (в git не попадают)
 EXAMPLES = ["shop.xlsx", "cafe.csv", "salon.xlsx"]  # тестовые бизнесы из data/synthetic
 EXAMPLES_SHOWN = 3  # сколько примеров значений показывать при разметке колонки
 ROLE_LABELS = {ROLE_IGNORE: "— не нужна —", **dict(ROLE_CHOICES)}
@@ -39,52 +45,64 @@ ROLE_LABELS = {ROLE_IGNORE: "— не нужна —", **dict(ROLE_CHOICES)}
 NOT_GROUPED = ("date", "price", "receipt")
 
 
-# ---------- тяжёлые расчёты: запоминаем ----------
-# modified - время изменения файла: загрузили новый файл с тем же именем - пересчитаем
+# ---------- память сессии ----------
 
 
-@st.cache_data(show_spinner="Читаю файл (большой файл - до минуты, но только один раз)...")
-def read_table(path: str, modified: float) -> pd.DataFrame:
-    return next(iter(load(Path(path)).values()))  # первый лист
+def remembered(key: tuple, compute: Callable[[], Any], message: str) -> Any:
+    # Посчитать один раз и запомнить - как st.cache_data, но с важным отличием:
+    # st.cache_data общий для ВСЕХ посетителей сервера, а эта память - у каждого своя
+    # (st.session_state) и исчезает, когда посетитель закрывает вкладку
+    cache = st.session_state.setdefault("cache", {})
+    if key not in cache:
+        with st.spinner(message):
+            cache[key] = compute()
+    return cache[key]
 
 
-@st.cache_data(show_spinner="Готовлю данные...")
-def get_events(path: str, modified: float, mapping: dict) -> tuple[pd.DataFrame, dict, list]:
-    events, report = prepare_table(read_table(path, modified), mapping)
-    return events, report, suggest_exclusions(events)
+def forget_previous_file(file_id: str) -> None:
+    # Открыли другой файл - всё запомненное о прежнем удаляем, а не копим в памяти
+    if st.session_state.get("file_id") != file_id:
+        st.session_state["file_id"] = file_id
+        st.session_state["cache"] = {}
+        st.session_state["forecast"] = False
 
 
-@st.cache_data(show_spinner="Проверяю модели на прошлом и подбираю горизонт...")
-def get_forecast(
-    path: str, modified: float, mapping: dict, exclude: list, country: str, currency: str
-) -> dict:
-    events = exclude_objects(get_events(path, modified, mapping)[0], exclude)[0]
-    return make_forecast(events, country=country, currency=currency)
+def read_table(name: str, data: bytes) -> pd.DataFrame:
+    # Файл -> таблица без сохранения на диск сервера. Функциям чтения нужен путь, поэтому
+    # кладём файл во временную папку, читаем, и папка удаляется вместе с файлом
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / Path(name).name  # имя без чужих папок: "../x.csv" -> "x.csv"
+        path.write_bytes(data)
+        return next(iter(load(path).values()))  # первый лист
 
 
 # ---------- боковая панель: файл, разметка, настройки ----------
 
 
-def choose_file() -> Path | None:
-    # Свой файл или тестовый пример. Свой сохраняем в data/uploads - функциям нужен путь
+def choose_file() -> tuple[str, bytes] | None:
+    # Свой файл или тестовый пример -> (имя файла, содержимое)
     uploaded = st.sidebar.file_uploader("Файл с продажами", type=["csv", *EXCEL_SUFFIXES])
+    st.sidebar.caption("Файл не сохраняется: он в памяти, пока открыта вкладка")
     if uploaded is not None:
-        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-        path = UPLOADS_DIR / uploaded.name
-        if not path.exists() or path.read_bytes() != uploaded.getvalue():
-            path.write_bytes(uploaded.getvalue())
-        return path
+        return uploaded.name, uploaded.getvalue()
     example = st.sidebar.selectbox("…или тестовый пример", ["", *EXAMPLES])
-    return SYNTHETIC_DIR / example if example else None
+    return (example, (SYNTHETIC_DIR / example).read_bytes()) if example else None
 
 
-def ask_mapping(path: Path, table: pd.DataFrame) -> dict[str, str] | None:
-    # Роль каждой колонки - выпадающим списком. Сохранённая разметка подставляется сама.
-    # Форма: роли применяются по кнопке, а не после каждого выбора
-    saved_file = mapping_path(path)
-    saved = json.loads(saved_file.read_text(encoding="utf-8")) if saved_file.exists() else {}
+def saved_mapping(name: str) -> dict[str, str]:
+    # Готовая разметка есть только у тестовых примеров (эталоны в data/synthetic).
+    # Разметку своих файлов не сохраняем: даже названия колонок - сведения о бизнесе
+    if name not in EXAMPLES:
+        return {}
+    return json.loads(mapping_path(SYNTHETIC_DIR / name).read_text(encoding="utf-8"))
+
+
+def ask_mapping(name: str, table: pd.DataFrame) -> dict[str, str] | None:
+    # Роль каждой колонки - выпадающим списком. Форма: роли применяются по кнопке,
+    # а не после каждого выбора
+    saved = saved_mapping(name)
     with st.sidebar.expander("Разметка колонок", expanded=not saved):
-        with st.form(f"mapping:{path}"):
+        with st.form(f"mapping:{name}"):
             mapping = {}
             for column in table.columns:
                 examples = ", ".join(map(str, table[column].dropna().head(EXAMPLES_SHOWN)))
@@ -96,18 +114,11 @@ def ask_mapping(path: Path, table: pd.DataFrame) -> dict[str, str] | None:
                     format_func=ROLE_LABELS.get,
                     help=f"Примеры: {examples}",
                 )
-            # Тестовые эталоны не перезаписываем - сохраняем разметку только своих файлов
-            can_save = path.parent == UPLOADS_DIR
-            remember = st.checkbox("Запомнить разметку", value=can_save, disabled=not can_save)
             if st.form_submit_button("Готово"):
-                if remember and can_save:
-                    saved_file.write_text(
-                        json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8"
-                    )
-                st.session_state[f"applied:{path}"] = mapping
-    # Применённая разметка: по кнопке "Готово" или сохранённая ранее.
+                st.session_state[f"applied:{name}"] = mapping
+    # Применённая разметка: по кнопке "Готово" или эталон примера.
     # Имя в памяти - не как у формы ("mapping:..."): имя формы Streamlit занимает сам
-    return st.session_state.get(f"applied:{path}") or saved or None
+    return st.session_state.get(f"applied:{name}") or saved or None
 
 
 def ask_settings(suggested: list[str]) -> tuple[list[str], str, str]:
@@ -227,14 +238,19 @@ def compare_tab(events: pd.DataFrame, currency: str) -> None:
         st.warning(warning)
 
 
-def forecast_tab(file_key: tuple, events: pd.DataFrame, country: str, currency: str) -> None:
-    # Прогноз считается несколько секунд (на большом файле - минуту), поэтому - по кнопке
+def forecast_tab(settings: tuple, events: pd.DataFrame, country: str, currency: str) -> None:
+    # Прогноз считается несколько секунд (на большом файле - минуту), поэтому - по кнопке.
+    # settings - разметка и исключения: поменялись - прогноз считается заново
     if st.button("Посчитать прогноз", type="primary"):
         st.session_state["forecast"] = True
     if not st.session_state.get("forecast"):
         st.caption("Программа проверит модели на прошлом и сама выберет, на сколько дней вперёд")
         return
-    result = get_forecast(*file_key, country, currency)
+    result = remembered(
+        ("прогноз", *settings, country, currency),
+        lambda: make_forecast(events, country=country, currency=currency),
+        "Проверяю модели на прошлом и подбираю горизонт...",
+    )
     st.write(result["сообщение"])
     if result["ступенька"] != STEP_FORECAST:
         return
@@ -252,20 +268,37 @@ def main() -> None:
     st.set_page_config(page_title="AI-аналитик", layout="wide")
     st.title("AI-аналитик для малого бизнеса")
 
-    path = choose_file()
-    if path is None:
+    file = choose_file()
+    if file is None:
         st.info("Загрузите Excel или CSV с продажами слева - или выберите тестовый пример")
         return
-    modified = path.stat().st_mtime
-    mapping = ask_mapping(path, read_table(str(path), modified))
+    name, data = file
+    # Отпечаток содержимого: тот же файл после перезагрузки страницы - тот же отпечаток
+    forget_previous_file(f"{name}:{hashlib.sha256(data).hexdigest()}")
+    try:
+        table = remembered(
+            ("таблица",),
+            lambda: read_table(name, data),
+            "Читаю файл (большой - до минуты, но только один раз)...",
+        )
+    except ValueError as error:  # "не удалось определить кодировку"...
+        st.error(f"Не получилось прочитать файл: {error}")
+        return
+    mapping = ask_mapping(name, table)
     if mapping is None:
         st.info("Укажите слева, что значит каждая колонка, и нажмите «Готово»")
         return
+    mapping_key = tuple(mapping.items())  # словарь нельзя сделать ключом памяти, кортеж - можно
     try:
-        events, report, suggested = get_events(str(path), modified, mapping)
+        events, report = remembered(
+            ("события", mapping_key), lambda: prepare_table(table, mapping), "Готовлю данные..."
+        )
     except ValueError as error:  # "нет колонки с датой", "одна роль у двух колонок"...
         st.error(f"Не получилось подготовить данные: {error}")
         return
+    suggested = remembered(
+        ("служебные", mapping_key), lambda: suggest_exclusions(events), "Ищу служебные строки..."
+    )
     if "amount" not in available_fields(events):
         st.error("Нужна колонка с суммой - или цена и количество, тогда сумма посчитается сама")
         return
@@ -285,7 +318,7 @@ def main() -> None:
     with tabs[3]:
         compare_tab(events, currency)
     with tabs[4]:
-        forecast_tab((str(path), modified, mapping, exclude), events, country, currency)
+        forecast_tab((mapping_key, tuple(exclude)), events, country, currency)
 
 
 if __name__ == "__main__":  # Streamlit запускает файл именно так
