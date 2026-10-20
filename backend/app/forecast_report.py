@@ -78,16 +78,28 @@ def quality_level(wape: float) -> tuple[str, str]:
     return QUALITY_LEVELS[-1][1:]
 
 
-def quality_report(daily: pd.DataFrame, comparison: pd.DataFrame) -> dict:
-    # Вывод для пользователя по результатам compare_models: точность словами и причины
-    best_model = str(comparison.index[0])  # compare_models ставит лучшую модель первой
-    best = comparison.iloc[0]
+def total_error_text(total_error: float) -> str:
+    # 4.2 -> "примерно на 4%", 0.3 -> "меньше чем на 1%"
+    if abs(total_error) < 1:
+        return "меньше чем на 1%"
+    return f"примерно на {abs(total_error):.0f}%"
+
+
+def quality_report(
+    daily: pd.DataFrame,
+    comparison: pd.DataFrame,
+    model: str | None = None,
+) -> dict:
+    # Вывод для пользователя по результатам экзамена: точность словами и причины.
+    # model - модель, которой построен прогноз. Не указана - лучшая (первая строка сравнения)
+    best_model = model if model is not None else str(comparison.index[0])
+    best = comparison.loc[best_model]
     level, meaning = quality_level(best["WAPE_%"])
 
     summary = (
         f"Прогноз ошибается в среднем на {best['WAPE_%']:.0f}% "
         f"(около {money(best['MAE'])} р. в день). "
-        f"Итог за период отличается от реальности примерно на {abs(best['ошибка_итога_%']):.0f}%. "
+        f"Итог за период отличается от реальности {total_error_text(best['ошибка_итога_%'])}. "
         f"Точность {level}: {meaning}."
     )
 
