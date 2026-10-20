@@ -1,6 +1,7 @@
 """Прогноз: простой прогноз (точка отсчёта), Prophet, проверка точности."""
 
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,7 @@ _cmdstanpy_logger.setLevel(logging.WARNING)
 from prophet import Prophet  # noqa: E402 - импорт после настройки логов, иначе они не приглушатся
 
 from app.analytics import by_period  # noqa: E402
-from app.config import FORECAST_DAYS, RANDOM_SEED  # noqa: E402
+from app.config import FORECAST_DAYS, MIN_HISTORY_DAYS, RANDOM_SEED, TEST_DAYS  # noqa: E402
 
 # А сам Prophet настраивает сообщения при импорте - поэтому его уровень ставим ПОСЛЕ
 logging.getLogger("prophet").setLevel(logging.ERROR)  # предупреждения - см. YEAR_DAYS
@@ -30,6 +31,10 @@ WEEK_DAYS = 7
 YEAR_DAYS = 365
 INTERVAL_WIDTH = 0.8  # коридор прогноза: в 8 случаях из 10 реальность окажется внутри
 COUNTRY = "BY"  # праздники Беларуси
+EVALUATION_WINDOWS = 3  # сколько раз "сдаём экзамен" на разных отрезках истории
+
+# Функция прогноза: (ряд по дням, на сколько дней) -> таблица с колонками ds и yhat
+Forecaster = Callable[[pd.DataFrame, int], pd.DataFrame]
 
 
 def to_daily(events: pd.DataFrame, value: str = "amount") -> pd.DataFrame:
@@ -71,3 +76,70 @@ def prophet_forecast(daily: pd.DataFrame, days: int = FORECAST_DAYS) -> pd.DataF
     columns = ["yhat", "yhat_lower", "yhat_upper"]
     forecast[columns] = forecast[columns].clip(lower=0)
     return forecast.reset_index(drop=True)
+
+
+# Модели, которые умеем сравнивать. Новая модель (в дипломе - Chronos) - одна строка здесь
+MODELS: dict[str, Forecaster] = {
+    "простой прогноз": naive_forecast,
+    "Prophet": prophet_forecast,
+}
+
+
+def window_metrics(actual: np.ndarray, forecast: pd.DataFrame) -> dict[str, float]:
+    # Насколько прогноз ошибся на одном отрезке. actual - что было на самом деле
+    predicted = forecast["yhat"].to_numpy()
+    errors = np.abs(actual - predicted)
+    total = actual.sum()
+    metrics = {
+        "MAE": errors.mean(),  # средняя ошибка за день, в рублях
+        # WAPE - ошибка в % от продаж. Не MAPE: тот делит на продажи каждого дня и ломается на нулях
+        "WAPE_%": errors.sum() / total * 100 if total else np.nan,
+        # Ошибка итога за весь период, со знаком: + прогноз завысил, - занизил
+        "ошибка_итога_%": (predicted.sum() - total) / total * 100 if total else np.nan,
+    }
+    if "yhat_lower" in forecast:  # коридор есть только у моделей, которые его считают
+        inside = (actual >= forecast["yhat_lower"].to_numpy()) & (
+            actual <= forecast["yhat_upper"].to_numpy()
+        )
+        metrics["в_коридоре_%"] = inside.mean() * 100
+    return metrics
+
+
+def evaluate(
+    daily: pd.DataFrame,
+    forecaster: Forecaster,
+    horizon: int = TEST_DAYS,
+    windows: int = EVALUATION_WINDOWS,
+) -> dict:
+    # "Экзамен на прошлом": прячем последние horizon дней, прогнозируем их по тому, что было
+    # раньше, и сравниваем с правдой. Повторяем на нескольких отрезках и усредняем.
+    # Модель учится ТОЛЬКО на прошлом - никогда не перемешиваем, иначе точность будет ложной
+    windows = min(windows, (len(daily) - MIN_HISTORY_DAYS) // horizon)  # сколько отрезков влезает
+    if windows < 1:
+        raise ValueError(
+            f"Мало данных для проверки на {horizon} дней: "
+            f"нужно хотя бы {MIN_HISTORY_DAYS + horizon} дней истории"
+        )
+
+    results = []
+    for window in range(windows):
+        test_end = len(daily) - window * horizon  # каждый следующий отрезок - раньше предыдущего
+        train = daily.iloc[: test_end - horizon]  # всё, что было ДО проверяемого отрезка
+        actual = daily["y"].iloc[test_end - horizon : test_end].to_numpy()
+        results.append(window_metrics(actual, forecaster(train, horizon)))
+
+    averaged = pd.DataFrame(results).mean()  # среднее по отрезкам
+    return {
+        "отрезков": windows,
+        **{name: round(float(value), 1) for name, value in averaged.items()},
+    }
+
+
+def compare_models(
+    daily: pd.DataFrame,
+    horizon: int = TEST_DAYS,
+    models: dict[str, Forecaster] = MODELS,
+) -> pd.DataFrame:
+    # Один и тот же экзамен для всех моделей. Лучшая (с наименьшей ошибкой WAPE) - сверху
+    results = {name: evaluate(daily, forecaster, horizon) for name, forecaster in models.items()}
+    return pd.DataFrame(results).T.sort_values("WAPE_%")
