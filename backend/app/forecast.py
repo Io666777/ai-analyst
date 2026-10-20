@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -62,16 +63,21 @@ def naive_forecast(daily: pd.DataFrame, days: int = FORECAST_DAYS) -> pd.DataFra
     return pd.DataFrame({"ds": future_dates, "yhat": np.resize(last_week, days)})
 
 
-def prophet_forecast(daily: pd.DataFrame, days: int = FORECAST_DAYS) -> pd.DataFrame:
+def prophet_forecast(
+    daily: pd.DataFrame,
+    days: int = FORECAST_DAYS,
+    country: str = COUNTRY,
+) -> pd.DataFrame:
     # Прогноз Prophet: тренд + недельная (и годовая, если есть год истории) сезонность
-    # + праздники Беларуси. Возвращает прогноз yhat и коридор yhat_lower - yhat_upper
+    # + праздники страны (по умолчанию Беларусь, "GB" - Великобритания, "RU" - Россия).
+    # Возвращает прогноз yhat и коридор yhat_lower - yhat_upper
     model = Prophet(
         weekly_seasonality=True,
         yearly_seasonality=len(daily) >= YEAR_DAYS,  # волну длиной в год не увидеть за 3 месяца
         daily_seasonality=False,  # у нас данные по дням, внутридневной сезонности нет
         interval_width=INTERVAL_WIDTH,
     )
-    model.add_country_holidays(country_name=COUNTRY)
+    model.add_country_holidays(country_name=country)
     model.fit(daily)
 
     future = model.make_future_dataframe(periods=days, include_history=False)
@@ -85,11 +91,16 @@ def prophet_forecast(daily: pd.DataFrame, days: int = FORECAST_DAYS) -> pd.DataF
     return forecast.reset_index(drop=True)
 
 
-# Модели, которые умеем сравнивать. Новая модель (в дипломе - Chronos) - одна строка здесь
-MODELS: dict[str, Forecaster] = {
-    "простой прогноз": naive_forecast,
-    "Prophet": prophet_forecast,
-}
+def models_for(country: str = COUNTRY) -> dict[str, Forecaster]:
+    # Модели, которые умеем сравнивать. Новая модель (в дипломе - Chronos) - одна строка здесь.
+    # partial "запоминает" страну праздников: получается функция (ряд, дни), как у остальных
+    return {
+        "простой прогноз": naive_forecast,
+        "Prophet": partial(prophet_forecast, country=country),
+    }
+
+
+MODELS = models_for()  # модели с праздниками по умолчанию (Беларусь)
 
 
 def window_metrics(actual: np.ndarray, forecast: pd.DataFrame) -> dict[str, float]:

@@ -49,6 +49,7 @@ def strip_text(values: pd.Series) -> pd.Series:
 CONVERTERS = {
     "date": to_date,
     "amount": to_number,
+    "price": to_number,
     "quantity": to_number,
     "object": strip_text,
     "category": strip_text,

@@ -22,6 +22,7 @@ from app.analytics import (
     compare_periods,
     find_item,
     find_items,
+    incomplete_periods,
     item_detail,
     last_full_month,
     last_full_month_vs_previous,
@@ -88,6 +89,21 @@ def test_by_period_text_field(events):
 def test_by_period_missing_field(events):
     with pytest.raises(ValueError, match="executor"):
         by_period(events, value="executor")
+
+
+def test_by_period_full_periods_only(events):
+    # Данные с 10 января по 15 апреля: январь и апрель неполные - остаются февраль и март
+    assert by_period(events, "месяц", full_periods_only=True).tolist() == [160, 300]
+
+
+def test_incomplete_periods(events):
+    assert incomplete_periods(events) == [
+        "январь 2026 (данные с 10.01.2026)",
+        "апрель 2026 (данные по 15.04.2026)",
+    ]
+    # Без апреля: март кончается 31.03 (в 15:00) - он полный, неполным остаётся только январь
+    until_march = events[events["date"] < "2026-04-01"]
+    assert incomplete_periods(until_march) == ["январь 2026 (данные с 10.01.2026)"]
 
 
 # ---------- period_total и compare_periods ----------
@@ -240,7 +256,8 @@ def test_item_detail(events):
     assert detail["количество"] == 45
     assert detail["первая_продажа"] == pd.Timestamp("2026-01-10")
     assert detail["последняя_продажа"] == pd.Timestamp("2026-04-15")
-    assert detail["динамика"].tolist() == [100, 100, 200, 50]
+    # Данные с 10.01 по 15.04: январь и апрель неполные - на графике только февраль и март
+    assert detail["динамика"].tolist() == [100, 200]
     assert detail["последний_месяц"]["стало"] == 200  # март
 
 
@@ -251,8 +268,20 @@ def test_item_detail_all_matches(events):
     assert detail["позиции"] == ["Пиво Аливария", "Пиво Лидское"]
 
 
-def test_item_detail_new_item_without_last_month(events):
-    # Аливария продавалась один день - сравнивать месяцы не с чем, но отчёт всё равно есть
+def test_item_detail_full_months_from_all_data(events):
+    # Аливарию купили только 28.02. Полные месяцы решаются по ВСЕМ данным, а не по одной
+    # её продаже: март полный, просто без продаж - падение на 100%, а не "мало данных"
     detail = item_detail(events, "аливария")
     assert detail["выручка"] == 60
+    assert detail["динамика"].tolist() == [60, 0]  # февраль, март
+    assert detail["последний_месяц"]["было"] == 60
+    assert detail["последний_месяц"]["стало"] == 0
+    assert detail["последний_месяц"]["предупреждения"] == []
+
+
+def test_item_detail_without_two_full_months():
+    # Во всех данных меньше двух полных месяцев - сравнивать не с чем, но отчёт всё равно есть
+    events = make_events([("2026-01-10", "Хлеб", "Хлеб", "B1", 5, 50.0)])
+    detail = item_detail(events, "хлеб")
+    assert detail["выручка"] == 50
     assert detail["последний_месяц"] is None

@@ -10,12 +10,13 @@ EXCEL_SUFFIXES = (".xlsx", ".xls")
 
 
 def guess_separator(header_line: str) -> str:
-
+    # Разделитель CSV по строке шапки: в русском Excel ";", в остальных ",".
+    # Свой вместо автоопределения pandas: тот ошибается, когда в суммах есть запятые "55,00"
     return ";" if header_line.count(";") >= header_line.count(",") else ","
 
 
 def read_csv(path: Path) -> pd.DataFrame:
-
+    # Пробуем кодировки по очереди: UTF-8 (современные программы), затем cp1251 (старый Excel, 1С)
     for encoding in CSV_ENCODINGS:
         try:
             with path.open(encoding=encoding) as file:

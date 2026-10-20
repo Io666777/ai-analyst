@@ -1,0 +1,17 @@
+# Настройка Render: по этому файлу он сам создаёт сервис (New -> Blueprint)
+services:
+  - type: web
+    name: ai-analyst
+    runtime: python
+    plan: free
+    rootDir: backend # программа лежит в папке backend
+    buildCommand: pip install -r requirements-deploy.txt
+    # $PORT выдаёт Render; headless - не открывать браузер и не спрашивать почту;
+    # gatherUsageStats - не отправлять статистику в Streamlit
+    startCommand: >-
+      python -m streamlit run app/web.py
+      --server.port $PORT --server.address 0.0.0.0
+      --server.headless true --browser.gatherUsageStats false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.7 # как в нашем venv

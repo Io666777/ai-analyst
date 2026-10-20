@@ -1,5 +1,7 @@
 """Универсальная модель данных: таблица любого бизнеса -> одинаковые колонки."""
 
+import re
+
 import pandas as pd
 
 # Типы событий
@@ -15,9 +17,13 @@ FIELDS = {
     "category": "группа товаров или услуг",
     "quantity": "количество",
     "amount": "сумма в деньгах",
+    "price": "цена за единицу",
     "receipt": "номер чека или документа",
     "executor": "мастер, продавец, сотрудник",
 }
+
+# Поля, которые нельзя складывать: сумма цен за месяц ничего не значит
+NOT_ADDITIVE = ("price",)
 
 # Дополнительные поля - любые другие колонки. Сохраняются под своим названием:
 # признак - текст, по нему группируют, фильтруют и ищут (артикул, бренд, филиал)
@@ -28,6 +34,16 @@ EXTRA_ROLES = (ROLE_ATTRIBUTE, ROLE_MEASURE)
 
 # Колонки модели: все основные поля + тип события. Дополнительные идут после них
 EVENT_COLUMNS = [*FIELDS, "kind"]
+
+# Слова, по которым узнаём служебные строки среди "товаров": доставка, комиссии, корректировки.
+# Их программа только ПРЕДЛАГАЕТ исключить - решает пользователь
+SERVICE_WORDS = (
+    "доставка", "комиссия", "корректировка", "скидка", "услуги банка",
+    "postage", "carriage", "manual", "fee", "adjust", "bank charges", "commission",
+    "discount", "samples",
+)  # fmt: skip
+# \b - граница слова: "fee" найдёт "AMAZON FEE", но не "COFFEE"
+SERVICE_PATTERN = re.compile(r"\b(" + "|".join(map(re.escape, SERVICE_WORDS)) + r")\b", re.I)
 
 # Роль колонки = название основного поля. Роли person, phone, email, ignore в модель не попадают
 
@@ -50,10 +66,32 @@ def to_events(df: pd.DataFrame, mapping: dict[str, str], kind: str = KIND_SALE) 
     renames = {column: role for column, role in mapping.items() if role in FIELDS}
     events = df[list(renames)].rename(columns=renames)  # берём нужные колонки и переименовываем
     events["kind"] = kind
+    # В выгрузке нет суммы, но есть цена и количество - считаем сумму сами.
+    # Так бывает часто: отчёты "по позициям" из 1С, интернет-магазинов
+    if "amount" not in roles and {"price", "quantity"} <= set(roles):
+        events["amount"] = events["price"] * events["quantity"]
     # reindex - ставит колонки в стандартном порядке; каких нет - появятся пустыми
     events = events.reindex(columns=EVENT_COLUMNS)
     events[extras] = df[extras]  # дополнительные поля - под своими названиями, в конце
     return events
+
+
+def suggest_exclusions(events: pd.DataFrame) -> list[str]:
+    # Товары, похожие на служебные строки (доставка, комиссия...) - кандидаты на исключение
+    names = events["object"].dropna().unique()
+    return sorted(str(name) for name in names if SERVICE_PATTERN.search(str(name)))
+
+
+def exclude_objects(events: pd.DataFrame, names: list[str]) -> tuple[pd.DataFrame, dict]:
+    # Убирает из событий указанные товары (без учёта регистра) и отчитывается, что убрано
+    lowered = {name.strip().lower() for name in names}
+    excluded = events["object"].str.lower().isin(lowered).fillna(False).to_numpy(dtype=bool)
+    report = {
+        "исключено_строк": int(excluded.sum()),
+        "исключено_на_сумму": round(float(events.loc[excluded, "amount"].sum()), 2),
+        "исключены": sorted(events.loc[excluded, "object"].dropna().unique().tolist()),
+    }
+    return events[~excluded].reset_index(drop=True), report
 
 
 def extra_fields(events: pd.DataFrame) -> list[str]:
@@ -69,9 +107,11 @@ def available_fields(events: pd.DataFrame) -> list[str]:
 
 
 def numeric_fields(events: pd.DataFrame) -> list[str]:
-    # Заполненные числовые поля - их можно складывать (выручка, количество, скидка...)
+    # Заполненные числовые поля, которые можно складывать (выручка, количество, скидка...)
     return [
         field
         for field in available_fields(events)
-        if field != "date" and pd.api.types.is_numeric_dtype(events[field])
+        if field != "date"
+        and field not in NOT_ADDITIVE
+        and pd.api.types.is_numeric_dtype(events[field])
     ]

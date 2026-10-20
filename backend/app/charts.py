@@ -11,10 +11,14 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
+from app.config import CURRENCY
+
 FIGURE_WIDTH = 10  # ширина рисунка в дюймах
 FIGURE_HEIGHT = 4.5  # высота по умолчанию
 LINE_COLOR = "#2a6fdb"
 MAX_POINTS_WITH_MARKERS = 40  # если точек больше - рисуем линию без кружков
+MONTHS_LABELED_EACH = 12  # до года - подписываем каждый месяц, дольше - только начало квартала
+QUARTER_MONTHS = (1, 4, 7, 10)  # январь, апрель, июль, октябрь
 
 BAR_HEIGHT = 0.45  # сколько дюймов высоты рисунка на один столбец
 MIN_BAR_FIGURE_HEIGHT = 2.5  # даже у топ-2 рисунок не ниже этого
@@ -26,7 +30,7 @@ HISTORY_PER_HORIZON = 2  # истории на графике вдвое бол�
 MIN_HISTORY_SHOWN = 60  # но не меньше 60 дней
 
 # Подпись оси по полю модели
-VALUE_LABELS = {"amount": "Выручка, р.", "quantity": "Количество, шт."}
+VALUE_LABELS = {"amount": "Выручка, {currency}", "quantity": "Количество, шт."}
 
 MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
 
@@ -36,15 +40,20 @@ def format_number(value: float, _position: int | None = None) -> str:
     return f"{value:,.0f}".replace(",", " ")
 
 
-def format_month(value: float, _position: int | None = None) -> str:
-    # Дата на оси -> "мар 25". matplotlib хранит даты числами, mdates переводит обратно
+def format_month(value: float, position: int | None = None) -> str:
+    # Дата на оси -> месяц, а под ним год: "янв\n2026". Год полностью ("янв 26" читается
+    # как "26 января") и только у января и самой первой подписи - иначе подписи слипаются.
+    # matplotlib хранит даты числами, mdates переводит обратно; position - номер подписи на оси
     date = mdates.num2date(value)
-    return f"{MONTHS_SHORT[date.month - 1]} {date:%y}"
+    month = MONTHS_SHORT[date.month - 1]
+    if date.month == 1 or position == 0:
+        return f"{month}\n{date:%Y}"
+    return month
 
 
-def value_label(field: str) -> str:
+def value_label(field: str, currency: str = CURRENCY) -> str:
     # Подпись оси по полю: "amount" -> "Выручка, р.", дополнительное поле - его название
-    return VALUE_LABELS.get(field, field)
+    return VALUE_LABELS.get(field, field).format(currency=currency)
 
 
 def new_axes(title: str, height: float = FIGURE_HEIGHT) -> tuple[Figure, Axes]:
@@ -57,20 +66,44 @@ def new_axes(title: str, height: float = FIGURE_HEIGHT) -> tuple[Figure, Axes]:
     return figure, axes
 
 
-def line_chart(series: pd.Series, title: str) -> Figure:
+def period_frequency(series: pd.Series) -> str:
+    # Код периода ряда из by_period: "ME" - месяц, "YE-DEC" - год, "D" - день, "" - неизвестно
+    return getattr(series.index, "freqstr", None) or ""
+
+
+def to_period_starts(series: pd.Series) -> pd.Series:
+    # by_period подписывает месяц его ПОСЛЕДНИМ днём: сентябрь -> 30.09. На графике такая точка
+    # встаёт почти на отметку "окт" и читается как октябрь. Переносим на первый день: 01.09
+    if not period_frequency(series).startswith(("ME", "YE")):
+        return series  # дни и недели не трогаем: точка дня и так стоит в свой день
+    starts = series.index.to_period().to_timestamp()  # 30.09.2026 -> 01.09.2026
+    return pd.Series(series.to_numpy(), index=starts, name=series.name)
+
+
+def line_chart(series: pd.Series, title: str, currency: str = CURRENCY) -> Figure:
     # Динамика по периодам: результат by_period или "динамика" из item_detail
+    frequency = period_frequency(series)
+    series = to_period_starts(series)
     figure, axes = new_axes(title)
     marker = "o" if len(series) <= MAX_POINTS_WITH_MARKERS else None
     axes.plot(series.index, series.to_numpy(), color=LINE_COLOR, marker=marker)
 
-    axes.set_ylabel(value_label(str(series.name)))
+    axes.set_ylabel(value_label(str(series.name), currency))
     axes.set_ylim(bottom=0)  # ось с нуля, иначе небольшие колебания выглядят как обвал
     axes.yaxis.set_major_formatter(FuncFormatter(format_number))
+    if frequency.startswith("YE"):  # по годам - отметка на каждый год, подпись "2025"
+        axes.xaxis.set_major_locator(mdates.YearLocator())
+        axes.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+        return figure
+    # По месяцам - отметки на 1-е число, точка месяца на своей подписи
+    if frequency.startswith("ME"):
+        months = None if len(series) <= MONTHS_LABELED_EACH else QUARTER_MONTHS
+        axes.xaxis.set_major_locator(mdates.MonthLocator(bymonth=months))
     axes.xaxis.set_major_formatter(FuncFormatter(format_month))
     return figure
 
 
-def bar_chart(table: pd.DataFrame, title: str) -> Figure:
+def bar_chart(table: pd.DataFrame, title: str, currency: str = CURRENCY) -> Figure:
     # Топ из breakdown: горизонтальные столбцы, лидер сверху, на столбце - сумма и доля
     field = str(table.columns[0])  # первая колонка breakdown - то, что складывали
     values = table[field]
@@ -90,7 +123,7 @@ def bar_chart(table: pd.DataFrame, title: str) -> Figure:
         labels = [format_number(value) for value in values]
     axes.bar_label(bars, labels=labels, padding=4)
 
-    axes.set_xlabel(value_label(field))
+    axes.set_xlabel(value_label(field, currency))
     axes.set_xlim(right=values.max() * BAR_LABEL_SPACE)  # место справа под подписи
     axes.xaxis.set_major_formatter(FuncFormatter(format_number))
     axes.grid(False, axis="y")  # горизонтальные линии сетки между столбцами не нужны
@@ -102,6 +135,7 @@ def forecast_chart(
     forecast: pd.DataFrame,
     title: str,
     value: str = "amount",
+    currency: str = CURRENCY,
 ) -> Figure:
     # Факт (конец истории) + прогноз + коридор + черта "сегодня" на стыке.
     # daily - ряд по дням (to_daily), forecast - прогноз (make_forecast()["прогноз"])
@@ -125,7 +159,7 @@ def forecast_chart(
     axes.axvline(history["ds"].iloc[-1], color="gray", linewidth=1)  # черта "сегодня"
     axes.text(history["ds"].iloc[-1], 0, " сегодня", color="gray", va="bottom")
 
-    axes.set_ylabel(value_label(value))
+    axes.set_ylabel(value_label(value, currency))
     axes.set_ylim(bottom=0)
     axes.yaxis.set_major_formatter(FuncFormatter(format_number))
     # Отметки строго на 1-е число каждого месяца - иначе подпись "сен 26" повторяется дважды

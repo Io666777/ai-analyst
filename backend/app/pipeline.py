@@ -1,6 +1,7 @@
 """Конвейер: соединяет модули в цепочки - точки входа для интерфейса.
 
 prepare_events: файл -> загрузка -> очистка -> события универсальной модели
+prepare_table:  уже прочитанная таблица -> очистка -> события
 make_forecast:  события -> ступенька холодного старта -> лучшая модель -> горизонт -> прогноз
 """
 
@@ -9,17 +10,18 @@ from pathlib import Path
 import pandas as pd
 
 from app.cleaner import clean
-from app.config import FORECAST_DAYS
+from app.config import CURRENCY, FORECAST_DAYS
 from app.forecast import (
-    MODELS,
+    COUNTRY,
     WEEK_DAYS,
     choose_horizon,
     horizon_scan,
+    models_for,
     to_daily,
 )
 from app.forecast_report import money, quality_report
 from app.loader import load
-from app.model import KIND_SALE, available_fields, to_events
+from app.model import KIND_SALE, available_fields, exclude_objects, to_events
 
 # Ступеньки холодного старта
 STEP_NONE = "нет прогноза"  # меньше недели истории
@@ -35,8 +37,10 @@ def prepare_events(
     mapping: dict[str, str],
     kind: str = KIND_SALE,
     sheet: str | None = None,
+    exclude: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict]:
-    # Файл + словарь ролей -> события и общий отчёт. Точка входа для интерфейса
+    # Файл + словарь ролей -> события и общий отчёт. Точка входа для интерфейса.
+    # exclude - товары, которые пользователь решил не учитывать (доставка, комиссии...)
     sheets = load(path)
     if not sheets:
         raise ValueError("В файле нет данных")
@@ -45,19 +49,37 @@ def prepare_events(
     if sheet_name not in sheets:
         raise ValueError(f"В файле нет листа «{sheet_name}». Есть: {', '.join(sheets)}")
 
-    cleaned, clean_report = clean(sheets[sheet_name], mapping)
+    events, table_report = prepare_table(sheets[sheet_name], mapping, kind, exclude)
+    return events, {"файл": Path(path).name, "лист": sheet_name, **table_report}
+
+
+def prepare_table(
+    table: pd.DataFrame,
+    mapping: dict[str, str],
+    kind: str = KIND_SALE,
+    exclude: list[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    # То же, но для уже прочитанной таблицы: очистка -> события -> исключения.
+    # Отдельно от чтения файла - чтобы интерфейс читал большой файл один раз
+    cleaned, clean_report = clean(table, mapping)
     events = to_events(cleaned, mapping, kind)
 
     report = {
-        "файл": Path(path).name,
-        "лист": sheet_name,
         **clean_report,  # всё из отчёта очистки: сколько строк было, удалено, стало
         "поля": available_fields(events),
     }
+    if exclude:
+        events, exclude_report = exclude_objects(events, exclude)
+        report.update(exclude_report)
     return events, report
 
 
-def simple_estimate(daily: pd.DataFrame, reason: str) -> dict:
+def sentence(text: str) -> str:
+    # Точка в конце предложения ровно одна: "около 5 р." и "около 5 £." (а не "р.." и "£")
+    return text.rstrip(".") + "."
+
+
+def simple_estimate(daily: pd.DataFrame, reason: str, currency: str = CURRENCY) -> dict:
     # Ступенька "оценка": простые средние вместо прогноза. reason - почему не прогноз.
     # Место для профилей сфер: здесь появится поправка на типичный сезон сферы бизнеса
     per_day = float(daily["y"].tail(RECENT_DAYS).mean())
@@ -73,9 +95,9 @@ def simple_estimate(daily: pd.DataFrame, reason: str) -> dict:
         "по_дням_недели": by_weekday,
         "если_так_пойдёт_дальше": round(projection, 2),
         "сообщение": (
-            f"{reason} Пока - оценка: в среднем {money(per_day)} р. в день "
+            f"{reason} Пока - оценка: в среднем {money(per_day)} {currency} в день "
             f"(за последние {min(RECENT_DAYS, len(daily))} дн.). Если так пойдёт дальше, "
-            f"за {FORECAST_DAYS} дней будет около {money(projection)} р."
+            + sentence(f"за {FORECAST_DAYS} дней будет около {money(projection)} {currency}")
         ),
     }
 
@@ -92,8 +114,16 @@ def best_model(scans: dict[str, pd.DataFrame]) -> str:
     return str(compare_at(scans, common_horizon).index[0])
 
 
-def make_forecast(events: pd.DataFrame, value: str = "amount") -> dict:
-    # Главная функция прогноза: события -> ступенька -> модель -> горизонт -> прогноз и отчёт
+def make_forecast(
+    events: pd.DataFrame,
+    value: str = "amount",
+    country: str = COUNTRY,
+    currency: str = CURRENCY,
+) -> dict:
+    # Главная функция прогноза: события -> ступенька -> модель -> горизонт -> прогноз и отчёт.
+    # country - чьи праздники учитывать: "BY" Беларусь, "RU" Россия, "GB" Великобритания...
+    # currency - валюта для текстов: "р.", "$", "£"...
+    models = models_for(country)
     daily = to_daily(events, value)
     days = len(daily)
 
@@ -108,16 +138,18 @@ def make_forecast(events: pd.DataFrame, value: str = "amount") -> dict:
         }
 
     # Экзамен по горизонтам для каждой модели. Пустая таблица - для экзамена мало данных
-    scans = {name: horizon_scan(daily, forecaster) for name, forecaster in MODELS.items()}
+    scans = {name: horizon_scan(daily, forecaster) for name, forecaster in models.items()}
     if any(scan.empty for scan in scans.values()):
-        return simple_estimate(daily, f"Для проверенного прогноза данных мало ({days} дн.).")
+        reason = f"Для проверенного прогноза данных мало ({days} дн.)."
+        return simple_estimate(daily, reason, currency)
 
     model_name = best_model(scans)
     horizon = choose_horizon(scans[model_name])
     if horizon is None:
-        return simple_estimate(daily, "По этим данным прогноз ненадёжен даже на неделю.")
+        reason = "По этим данным прогноз ненадёжен даже на неделю."
+        return simple_estimate(daily, reason, currency)
 
-    forecast = MODELS[model_name](daily, horizon)
+    forecast = models[model_name](daily, horizon)
     # Отчёт о точности - по экзамену именно на том горизонте, на который строим прогноз
     comparison = compare_at(scans, horizon)
     result = {
@@ -127,7 +159,9 @@ def make_forecast(events: pd.DataFrame, value: str = "amount") -> dict:
         "горизонт_дней": horizon,
         "прогноз": forecast,
         "итого": round(float(forecast["yhat"].sum()), 2),
-        "точность": quality_report(daily, comparison, model=model_name),
+        "точность": quality_report(
+            daily, comparison, model=model_name, country=country, currency=currency
+        ),
     }
     if "yhat_lower" in forecast:  # коридор есть не у всех моделей
         result["коридор"] = (
@@ -135,7 +169,9 @@ def make_forecast(events: pd.DataFrame, value: str = "amount") -> dict:
             round(float(forecast["yhat_upper"].sum()), 2),
         )
     result["сообщение"] = (
-        f"Прогноз на {horizon} дн. ({model_name}): около {money(result['итого'])} р. "
-        f"{result['точность']['вывод']}"
+        sentence(
+            f"Прогноз на {horizon} дн. ({model_name}): около {money(result['итого'])} {currency}"
+        )
+        + f" {result['точность']['вывод']}"
     )
     return result

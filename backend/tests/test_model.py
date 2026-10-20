@@ -8,8 +8,10 @@ from app.model import (
     KIND_SALE,
     KIND_STOCK,
     available_fields,
+    exclude_objects,
     extra_fields,
     numeric_fields,
+    suggest_exclusions,
     to_events,
 )
 
@@ -113,6 +115,60 @@ def test_extras_name_clash(table_with_extras):
     table = table_with_extras.rename(columns={"Артикул": "amount"})
     with pytest.raises(ValueError, match="amount"):
         to_events(table, {**MAPPING, "amount": "attribute"})
+
+
+def test_amount_from_price_and_quantity():
+    # В выгрузке нет суммы, но есть цена и количество - сумму программа считает сама
+    table = pd.DataFrame(
+        {"Дата": pd.to_datetime(["2025-10-01"] * 2), "Цена": [2.5, 4.0], "Кол-во": [4, -1]}
+    )
+    events = to_events(table, {"Дата": "date", "Цена": "price", "Кол-во": "quantity"})
+    assert events["amount"].tolist() == [10.0, -4.0]  # возврат (-1 шт) уменьшает выручку
+    assert "price" not in numeric_fields(events)  # цены складывать бессмысленно
+    assert "amount" in numeric_fields(events)
+
+
+def test_amount_from_file_wins_over_price():
+    # Если сумма в файле есть - берём её, а не пересчитываем
+    table = pd.DataFrame(
+        {"Дата": pd.to_datetime(["2025-10-01"]), "Цена": [2.5], "Кол-во": [4], "Сумма": [9.0]}
+    )
+    mapping = {"Дата": "date", "Цена": "price", "Кол-во": "quantity", "Сумма": "amount"}
+    assert to_events(table, mapping)["amount"].tolist() == [9.0]  # со скидкой, а не 10
+
+
+# ---------- служебные строки ----------
+
+
+@pytest.fixture
+def with_service_rows() -> pd.DataFrame:
+    names = ["DOTCOM POSTAGE", "COFFEE MUG", "AMAZON FEE", "Доставка курьером", "Пиво"]
+    table = pd.DataFrame(
+        {
+            "Дата": pd.to_datetime(["2025-10-01"] * 5),
+            "Товар": pd.Series(names, dtype="string"),
+            "Сумма": [10.0, 5.0, 3.0, 7.0, 2.0],
+        }
+    )
+    return to_events(table, {"Дата": "date", "Товар": "object", "Сумма": "amount"})
+
+
+def test_suggest_exclusions_whole_words(with_service_rows):
+    # "fee" находит AMAZON FEE, но не COFFEE MUG; русские слова тоже ищутся
+    assert suggest_exclusions(with_service_rows) == [
+        "AMAZON FEE",
+        "DOTCOM POSTAGE",
+        "Доставка курьером",
+    ]
+
+
+def test_exclude_objects(with_service_rows):
+    # Регистр не важен; отчёт - сколько строк и на какую сумму убрано
+    events, report = exclude_objects(with_service_rows, ["dotcom postage", "AMAZON FEE"])
+    assert events["object"].tolist() == ["COFFEE MUG", "Доставка курьером", "Пиво"]
+    assert report["исключено_строк"] == 2
+    assert report["исключено_на_сумму"] == 13.0
+    assert report["исключены"] == ["AMAZON FEE", "DOTCOM POSTAGE"]
 
 
 def test_personal_data_not_kept_as_extra(table_with_extras):

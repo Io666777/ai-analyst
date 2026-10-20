@@ -21,13 +21,44 @@ def require_field(events: pd.DataFrame, field: str, numeric: bool = False) -> No
         raise ValueError(f"Поле «{field}» не числовое - его нельзя складывать")
 
 
-def by_period(events: pd.DataFrame, period: str = "месяц", value: str = "amount") -> pd.Series:
-    # Сумма value (по умолчанию - выручка) за каждый период: день, неделю, месяц, год
+def by_period(
+    events: pd.DataFrame,
+    period: str = "месяц",
+    value: str = "amount",
+    full_periods_only: bool = False,
+) -> pd.Series:
+    # Сумма value (по умолчанию - выручка) за каждый период: день, неделю, месяц, год.
+    # full_periods_only=True - без неполных крайних периодов: данные по 9 декабря дали бы
+    # "декабрь" из 9 дней, и на графике это выглядело бы как обвал продаж
     if period not in PERIODS:
         raise ValueError(f"Неизвестный период «{period}». Есть: {', '.join(PERIODS)}")
     require_field(events, value, numeric=True)
     # resample раскладывает строки по периодам по дате и складывает каждый период
-    return events.set_index("date")[value].resample(PERIODS[period]).sum()
+    totals = events.set_index("date")[value].resample(PERIODS[period]).sum()
+    if not full_periods_only or totals.empty:
+        return totals
+
+    periods = totals.index.to_period()  # 31.12.2011 -> декабрь 2011: у него есть начало и конец
+    first_complete = events["date"].min().normalize() <= periods[0].start_time
+    last_complete = events["date"].max().normalize() >= periods[-1].end_time.normalize()
+    return totals.iloc[(0 if first_complete else 1) : (None if last_complete else -1)]
+
+
+def incomplete_periods(events: pd.DataFrame, period: str = "месяц") -> list[str]:
+    # Какие крайние периоды неполные - чтобы честно сказать, почему их нет на графике.
+    # Например: ["декабрь 2011 (данные по 09.12.2011)"]
+    periods = events.set_index("date").resample(PERIODS[period]).size().index.to_period()
+    start, end = events["date"].min().normalize(), events["date"].max().normalize()
+
+    def label(item: pd.Period) -> str:
+        return month_name(item) if period == "месяц" else str(item)
+
+    result = []
+    if start > periods[0].start_time:
+        result.append(f"{label(periods[0])} (данные с {start:%d.%m.%Y})")
+    if end < periods[-1].end_time.normalize():
+        result.append(f"{label(periods[-1])} (данные по {end:%d.%m.%Y})")
+    return result
 
 
 def period_total(events: pd.DataFrame, start: str, end: str, value: str = "amount") -> float:
@@ -92,14 +123,24 @@ def month_name(month: pd.Period) -> str:
     return f"{MONTH_NAMES[month.month - 1]} {month.year}"
 
 
-def last_full_month_vs_previous(events: pd.DataFrame, value: str = "amount") -> dict:
+def last_full_month_vs_previous(
+    events: pd.DataFrame,
+    value: str = "amount",
+    all_events: pd.DataFrame | None = None,
+) -> dict:
     # Последний полный месяц против предыдущего: "как прошёл последний месяц?"
-    month = last_full_month(events)
-    if month is None or (month - 1).start_time < events["date"].min().normalize():
+    # all_events - по каким данным решать, какие месяцы полные. Для товара - по ВСЕМ данным:
+    # если товар последний раз купили 20 ноября, ноябрь всё равно полный - просто без продаж
+    bounds = events if all_events is None else all_events
+    month = last_full_month(bounds)
+    if month is None or (month - 1).start_time < bounds["date"].min().normalize():
         raise ValueError("Мало данных: для сравнения нужно хотя бы два полных месяца")
     previous = month - 1
 
     result = compare_periods(events, month_bounds(previous), month_bounds(month), value)
+    # Оба месяца полные по всем данным. Предупреждение "выходит за пределы" могли дать только
+    # даты продаж товара (купили последний раз 20 ноября), а это не ошибка - убираем
+    result["предупреждения"] = []
 
     # Месяцы бывают разной длины (28-31 день), поэтому считаем и среднее за день
     per_day_before = result["было"] / previous.days_in_month
@@ -203,9 +244,12 @@ def item_detail(
 
     # Динамику считаем по деньгам, а если их нет - по штукам
     value = "amount" if "amount" in fields else "quantity"
-    detail["динамика"] = by_period(sales, period, value)
+    # Только полные периоды - и полные по ВСЕМ данным, а не по датам продаж этого товара.
+    # Период без продаж товара - честный ноль, а не пропуск
+    full = by_period(events, period, value, full_periods_only=True)
+    detail["динамика"] = by_period(sales, period, value).reindex(full.index, fill_value=0)
     try:
-        detail["последний_месяц"] = last_full_month_vs_previous(sales, value)
+        detail["последний_месяц"] = last_full_month_vs_previous(sales, value, all_events=events)
     except ValueError:
-        detail["последний_месяц"] = None  # товар продаётся меньше двух полных месяцев
+        detail["последний_месяц"] = None  # в данных меньше двух полных месяцев
     return detail
