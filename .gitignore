@@ -11,6 +11,9 @@ backend/data/real/
 backend/data/uploads/
 *.db
 
+# Графики, сохранённые из ноутбуков (для курсовой и т.п.)
+backend/notebooks/*.png
+
 # Служебное Python
 __pycache__/
 .ipynb_checkpoints/
