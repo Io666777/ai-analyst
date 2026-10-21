@@ -47,6 +47,22 @@ SERVICE_PATTERN = re.compile(r"\b(" + "|".join(map(re.escape, SERVICE_WORDS)) + 
 
 # Роль колонки = название основного поля. Роли person, phone, email, ignore в модель не попадают
 
+# Роли для разметки колонок в интерфейсах: (роль, как её показать пользователю)
+ROLE_CHOICES = [
+    ("date", "дата"),
+    ("object", "товар / услуга"),
+    ("category", "категория"),
+    ("quantity", "количество"),
+    ("amount", "сумма, деньги"),
+    ("price", "цена за единицу (если суммы нет - посчитается сама)"),
+    ("executor", "сотрудник"),
+    ("receipt", "номер чека"),
+    (ROLE_ATTRIBUTE, "другой признак (текст: артикул, бренд...)"),
+    (ROLE_MEASURE, "другое число (скидка...)"),
+    ("person", "клиент (в анализ не попадёт)"),
+]
+ROLE_IGNORE = "ignore"  # колонка не нужна
+
 
 def to_events(df: pd.DataFrame, mapping: dict[str, str], kind: str = KIND_SALE) -> pd.DataFrame:
     # Очищенная таблица -> события: основные поля (EVENT_COLUMNS) + дополнительные

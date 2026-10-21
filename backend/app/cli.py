@@ -31,27 +31,11 @@ from app.config import BACKEND_DIR, CURRENCY
 from app.forecast import COUNTRY, to_daily
 from app.forecast_report import COUNTRY_NAMES, money
 from app.loader import EXCEL_SUFFIXES, load
-from app.model import exclude_objects, suggest_exclusions
+from app.model import ROLE_CHOICES, ROLE_IGNORE, exclude_objects, suggest_exclusions
 from app.pipeline import STEP_FORECAST, make_forecast, prepare_events
 
 OUTPUT_DIR = BACKEND_DIR / "output"  # сюда сохраняются графики
 EXAMPLES_SHOWN = 3  # сколько примеров значений показывать при разметке колонки
-
-# Роли колонок для меню разметки: (роль, как её показать пользователю)
-ROLE_CHOICES = [
-    ("date", "дата"),
-    ("object", "товар / услуга"),
-    ("category", "категория"),
-    ("quantity", "количество"),
-    ("amount", "сумма, деньги"),
-    ("price", "цена за единицу (если суммы нет - посчитается сама)"),
-    ("executor", "сотрудник"),
-    ("receipt", "номер чека"),
-    ("attribute", "другой признак (текст: артикул, бренд...)"),
-    ("measure", "другое число (скидка...)"),
-    ("person", "клиент (в анализ не попадёт)"),
-]
-ROLE_IGNORE = "ignore"
 
 
 # ---------- ввод ----------
