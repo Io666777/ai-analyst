@@ -115,3 +115,11 @@ def numeric_fields(events: pd.DataFrame) -> list[str]:
         and field not in NOT_ADDITIVE
         and pd.api.types.is_numeric_dtype(events[field])
     ]
+
+
+def require_field(events: pd.DataFrame, field: str, numeric: bool = False) -> None:
+    # Проверка перед расчётом: поле есть в данных, а если нужно складывать - оно числовое
+    if field not in available_fields(events):
+        raise ValueError(f"В данных нет поля «{field}»")
+    if numeric and field not in numeric_fields(events):
+        raise ValueError(f"Поле «{field}» не числовое - его нельзя складывать")
