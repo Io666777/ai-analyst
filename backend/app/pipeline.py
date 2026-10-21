@@ -17,9 +17,10 @@ from app.forecast import (
     choose_horizon,
     horizon_scan,
     models_for,
+    money,
+    quality_report,
     to_daily,
 )
-from app.forecast_report import money, quality_report
 from app.loader import load
 from app.model import KIND_SALE, available_fields, exclude_objects, to_events
 

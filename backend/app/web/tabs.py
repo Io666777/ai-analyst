@@ -12,8 +12,7 @@ from app.analytics import (
     last_full_month_vs_previous,
 )
 from app.charts import bar_chart, forecast_chart, line_chart
-from app.forecast import to_daily
-from app.forecast_report import money
+from app.forecast import money, to_daily
 from app.model import FIELDS, available_fields, numeric_fields
 from app.pipeline import STEP_FORECAST, make_forecast
 from app.web.memory import remembered

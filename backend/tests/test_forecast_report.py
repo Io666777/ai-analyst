@@ -1,11 +1,11 @@
-"""Тесты отчёта о точности прогноза для пользователя (app/forecast_report.py)."""
+"""Тесты отчёта о точности прогноза для пользователя (app/forecast/report.py)."""
 
 import numpy as np
 import pandas as pd
 import pytest
 from conftest import noise_daily, weekly_daily
 
-from app.forecast_report import (
+from app.forecast import (
     data_diagnostics,
     days_off,
     days_off_note,

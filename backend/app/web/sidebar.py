@@ -6,8 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from app.config import CURRENCY, SYNTHETIC_DIR
-from app.forecast import COUNTRY
-from app.forecast_report import COUNTRY_NAMES
+from app.forecast import COUNTRY, COUNTRY_NAMES
 from app.loader import EXCEL_SUFFIXES
 from app.model import ROLE_CHOICES, ROLE_IGNORE
 
