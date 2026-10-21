@@ -36,6 +36,20 @@ def find_header_row(raw: pd.DataFrame) -> int:
     return int(header_rows.index[0])
 
 
+def column_names(header: pd.Series) -> list[str]:
+    # Шапка -> уникальные названия колонок. Пустая ячейка -> "Колонка 3" (по номеру),
+    # повтор -> "Сумма (2)". Иначе две колонки с одним названием затрут друг друга
+    names = []
+    for number, cell in enumerate(header, 1):
+        name = str(cell).strip() if pd.notna(cell) else ""
+        name = name or f"Колонка {number}"
+        unique, copy = name, 2
+        while unique in names:
+            unique, copy = f"{name} ({copy})", copy + 1
+        names.append(unique)
+    return names
+
+
 def read_excel(path: Path) -> dict[str, pd.DataFrame]:
     # sheet_name=None - читаем все листы сразу, header=None - без заголовка, "сырыми"
     sheets = pd.read_excel(path, sheet_name=None, header=None)
@@ -47,7 +61,7 @@ def read_excel(path: Path) -> dict[str, pd.DataFrame]:
             continue  # пустой лист - пропускаем
         header_row = find_header_row(raw)
         table = raw.iloc[header_row + 1 :].reset_index(drop=True)  # всё, что ниже шапки
-        table.columns = [str(name).strip() for name in raw.iloc[header_row]]  # шапка
+        table.columns = column_names(raw.iloc[header_row])  # шапка
         tables[sheet_name] = table.infer_objects()  # вернуть колонкам с числами числовой тип
     return tables
 
