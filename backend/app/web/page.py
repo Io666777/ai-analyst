@@ -8,8 +8,7 @@ import hashlib
 
 import streamlit as st
 
-from app.model import available_fields, exclude_objects, suggest_exclusions
-from app.pipeline import prepare_table
+from app.data import available_fields, exclude_objects, prepare_table, suggest_exclusions
 from app.web.memory import forget_previous_file, read_table, remembered
 from app.web.sidebar import ask_mapping, ask_settings, choose_file
 from app.web.tabs import compare_tab, forecast_tab, item_tab, overview_tab, top_tab

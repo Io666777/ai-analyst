@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from app.model import require_field
+from app.data import require_field
 
 # Понятное название периода -> код периода в pandas (ME - конец месяца, YE - конец года)
 PERIODS = {"день": "D", "неделя": "W", "месяц": "ME", "год": "YE"}

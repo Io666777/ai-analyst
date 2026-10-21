@@ -28,7 +28,7 @@ from app.analytics import (
     last_full_month_vs_previous,
     period_total,
 )
-from app.model import to_events
+from app.data import to_events
 
 MAPPING = {
     "Дата": "date",

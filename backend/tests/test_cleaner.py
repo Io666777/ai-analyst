@@ -1,9 +1,9 @@
-"""Тесты очистки данных (app/cleaner.py)."""
+"""Тесты очистки данных (app/data/cleaner.py)."""
 
 import pandas as pd
 import pytest
 
-from app.cleaner import clean, drop_totals, to_date, to_number
+from app.data import clean, drop_totals, to_date, to_number
 
 # ---------- to_number ----------
 

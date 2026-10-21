@@ -6,9 +6,8 @@ import pandas as pd
 import streamlit as st
 
 from app.config import CURRENCY, SYNTHETIC_DIR
+from app.data import EXCEL_SUFFIXES, ROLE_CHOICES, ROLE_IGNORE
 from app.forecast import COUNTRY, COUNTRY_NAMES
-from app.loader import EXCEL_SUFFIXES
-from app.model import ROLE_CHOICES, ROLE_IGNORE
 
 EXAMPLES = ["shop.xlsx", "cafe.csv", "salon.xlsx"]  # тестовые бизнесы из data/synthetic
 EXAMPLES_SHOWN = 3  # сколько примеров значений показывать при разметке колонки

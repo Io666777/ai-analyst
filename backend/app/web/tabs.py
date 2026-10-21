@@ -12,9 +12,8 @@ from app.analytics import (
     last_full_month_vs_previous,
 )
 from app.charts import bar_chart, forecast_chart, line_chart
-from app.forecast import money, to_daily
-from app.model import FIELDS, available_fields, numeric_fields
-from app.pipeline import STEP_FORECAST, make_forecast
+from app.data import FIELDS, available_fields, numeric_fields
+from app.forecast import STEP_FORECAST, make_forecast, money, to_daily
 from app.web.memory import remembered
 
 # Поля, по которым топ не строят: дата, цена за штуку, номер чека

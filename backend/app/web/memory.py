@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from app.loader import load
+from app.data import load
 
 
 def remembered(key: tuple, compute: Callable[[], Any], message: str) -> Any:

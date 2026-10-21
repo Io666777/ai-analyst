@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 from conftest import weekly_daily
 
+from app.data import to_events
 from app.forecast import (
     MODELS,
     choose_horizon,
@@ -16,7 +17,6 @@ from app.forecast import (
     to_daily,
     window_metrics,
 )
-from app.model import to_events
 
 # ---------- to_daily ----------
 

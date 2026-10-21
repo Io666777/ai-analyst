@@ -3,7 +3,7 @@
 import pandas as pd
 
 from app.analytics.periods import month_name, period_total
-from app.model import require_field
+from app.data import require_field
 
 
 def compare_periods(

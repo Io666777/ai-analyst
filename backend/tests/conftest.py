@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.model import to_events
+from app.data import to_events
 
 # Идеальная неделя: пн-чт по 100, пт 150, сб 160, вс 140. Без случайностей
 WEEK_PATTERN = [100, 100, 100, 100, 150, 160, 140]

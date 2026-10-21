@@ -5,11 +5,20 @@
     evaluation - экзамен на прошлом: метрики ошибки, сравнение моделей
     horizon    - на сколько дней вперёд прогнозу можно верить
     report     - понятный пользователю отчёт о точности: можно ли верить и почему
+    auto       - всё сразу (make_forecast): ступенька холодного старта, модель, горизонт
 
-Всё нужное собрано здесь, поэтому снаружи импорт короткий: from app.forecast import to_daily.
-Главная функция "всё сразу" (make_forecast) - в конвейере (app/pipeline.py).
+Всё нужное собрано здесь, поэтому снаружи импорт короткий: from app.forecast import make_forecast
 """
 
+from app.forecast.auto import (
+    STEP_ESTIMATE,
+    STEP_FORECAST,
+    STEP_NONE,
+    best_model,
+    compare_at,
+    make_forecast,
+    simple_estimate,
+)
 from app.forecast.evaluation import EVALUATION_WINDOWS, compare_models, evaluate, window_metrics
 from app.forecast.horizon import (
     HORIZONS,
@@ -50,22 +59,29 @@ __all__ = [
     "MAX_ACCEPTABLE_TOTAL_ERROR",
     "MAX_ACCEPTABLE_WAPE",
     "MODELS",
+    "STEP_ESTIMATE",
+    "STEP_FORECAST",
+    "STEP_NONE",
     "WEEK_DAYS",
     "YEAR_DAYS",
     "Forecaster",
+    "best_model",
     "choose_horizon",
+    "compare_at",
     "compare_models",
     "data_diagnostics",
     "days_off",
     "days_off_note",
     "evaluate",
     "horizon_scan",
+    "make_forecast",
     "models_for",
     "money",
     "naive_forecast",
     "prophet_forecast",
     "quality_level",
     "quality_report",
+    "simple_estimate",
     "to_daily",
     "total_error_text",
     "window_metrics",

@@ -1,8 +1,8 @@
-"""Тесты загрузчика (app/loader.py)."""
+"""Тесты загрузчика (app/data/loader.py)."""
 
 import pandas as pd
 
-from app.loader import column_names, guess_separator
+from app.data import column_names, guess_separator
 
 
 def test_column_names_empty_and_repeated():

@@ -4,7 +4,7 @@ import pandas as pd
 
 from app.analytics.compare import last_full_month_vs_previous
 from app.analytics.periods import by_period
-from app.model import available_fields, extra_fields, numeric_fields, require_field
+from app.data import available_fields, extra_fields, numeric_fields, require_field
 
 
 def find_items(events: pd.DataFrame, query: str) -> list[str]:
