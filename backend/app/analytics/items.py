@@ -1,0 +1,83 @@
+"""Поиск товара и всё о нём: итоги, доля, динамика, последний месяц."""
+
+import pandas as pd
+
+from app.analytics.compare import last_full_month_vs_previous
+from app.analytics.periods import by_period
+from app.data import available_fields, extra_fields, numeric_fields, require_field
+
+
+def find_items(events: pd.DataFrame, query: str) -> list[str]:
+    # Все товары, подходящие под запрос, без учёта регистра. Порядок поиска:
+    # 1) точное название, 2) точное значение признака (артикул, код), 3) часть названия
+    require_field(events, "object")
+    items = events["object"].dropna().unique()
+    text = query.strip().lower()
+
+    exact = [item for item in items if item.lower() == text]
+    if exact:
+        return exact
+
+    text_extras = [field for field in extra_fields(events) if field not in numeric_fields(events)]
+    for field in text_extras:
+        # fillna(False) - у строк без значения признака совпадения нет
+        matches = events[field].str.lower().eq(text).fillna(False)
+        found = events.loc[matches, "object"].dropna().unique()
+        if len(found):
+            return sorted(found)
+
+    return sorted(item for item in items if text in item.lower())
+
+
+def find_item(events: pd.DataFrame, query: str) -> str:
+    # Ровно один товар по запросу: "пиво лидское" -> "Пиво Лидское 0.5", "00-0001" -> по артикулу
+    found = find_items(events, query)
+    if not found:
+        raise ValueError(f"Не найдено ничего похожего на «{query}»")
+    if len(found) > 1:  # подходит несколько - не угадываем, а просим уточнить
+        raise ValueError(f"Под «{query}» подходит несколько: {', '.join(found)}. Уточните")
+    return found[0]
+
+
+def item_detail(
+    events: pd.DataFrame,
+    query: str,
+    period: str = "месяц",
+    all_matches: bool = False,
+) -> dict:
+    # Всё о товаре: итоги, доля в выручке, даты продаж, динамика, последний месяц.
+    # all_matches=True - все подходящие товары вместе ("всё пиво сразу")
+    fields = available_fields(events)
+    if all_matches:
+        items = find_items(events, query)
+        if not items:
+            raise ValueError(f"Не найдено ничего похожего на «{query}»")
+    else:
+        items = [find_item(events, query)]
+    sales = events[events["object"].isin(items)]  # только продажи этих товаров
+
+    detail = {
+        "товар": items[0] if len(items) == 1 else f"{query} (позиций: {len(items)})",
+        "позиции": items,
+        "первая_продажа": sales["date"].min(),
+        "последняя_продажа": sales["date"].max(),
+    }
+    if "amount" in fields:
+        # float() - обычное число Python вместо np.float64, чтобы красиво выводилось
+        item_amount = float(sales["amount"].sum())
+        detail["выручка"] = round(item_amount, 2)
+        detail["доля_выручки_%"] = round(item_amount / events["amount"].sum() * 100, 1)
+    if "quantity" in fields:
+        detail["количество"] = float(sales["quantity"].sum())
+
+    # Динамику считаем по деньгам, а если их нет - по штукам
+    value = "amount" if "amount" in fields else "quantity"
+    # Только полные периоды - и полные по ВСЕМ данным, а не по датам продаж этого товара.
+    # Период без продаж товара - честный ноль, а не пропуск
+    full = by_period(events, period, value, full_periods_only=True)
+    detail["динамика"] = by_period(sales, period, value).reindex(full.index, fill_value=0)
+    try:
+        detail["последний_месяц"] = last_full_month_vs_previous(sales, value, all_events=events)
+    except ValueError:
+        detail["последний_месяц"] = None  # в данных меньше двух полных месяцев
+    return detail

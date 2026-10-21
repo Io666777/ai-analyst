@@ -1,9 +1,9 @@
-"""Тесты универсальной модели (app/model.py)."""
+"""Тесты универсальной модели (app/data/model.py)."""
 
 import pandas as pd
 import pytest
 
-from app.model import (
+from app.data import (
     EVENT_COLUMNS,
     KIND_SALE,
     KIND_STOCK,

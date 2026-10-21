@@ -6,7 +6,7 @@
 import pandas as pd
 
 from app.config import CURRENCY
-from app.forecast import COUNTRY, INTERVAL_WIDTH, YEAR_DAYS
+from app.forecast.models import COUNTRY, INTERVAL_WIDTH, YEAR_DAYS
 
 # Уровни точности по ошибке WAPE: (до скольки %, уровень, что это значит на практике)
 QUALITY_LEVELS = [

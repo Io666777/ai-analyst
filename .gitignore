@@ -14,7 +14,6 @@ backend/data/uploads/
 # Графики, сохранённые из ноутбуков (для курсовой и т.п.) - пересоздаются запуском ноутбука
 backend/notebooks/*.png
 backend/notebooks/figures/
-backend/output/
 
 # Служебное Python
 __pycache__/
