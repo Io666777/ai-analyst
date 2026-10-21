@@ -113,6 +113,7 @@ def ask_mapping(name: str, table: pd.DataFrame) -> dict[str, str] | None:
                     index=list(ROLE_LABELS).index(role) if role in ROLE_LABELS else 0,
                     format_func=ROLE_LABELS.get,
                     help=f"Примеры: {examples}",
+                    key=f"role:{name}:{column}",  # свой ключ - списки не спутаются
                 )
             if st.form_submit_button("Готово"):
                 st.session_state[f"applied:{name}"] = mapping
