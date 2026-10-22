@@ -1,0 +1,60 @@
+// Глобальные стили: переменные и минимальный сброс браузерных стилей.
+// Всё остальное - в CSS-модулях компонентов
+
+:root {
+  // Основной цвет - синий, как линия факта на графиках
+  --primary-100: #e8f0fc;
+  --primary-300: #8fb2ee;
+  --primary-500: #2a6fdb;
+  --primary-600: #2160c4;
+  --primary-900: #133a78;
+
+  // Акцент - оранжевый, как прогноз на графиках
+  --accent-100: #fdf0e6;
+  --accent-500: #e8772e;
+
+  // Нейтральные: фон, рамки, текст
+  --white: #fff;
+  --base-50: #f7f8fa;
+  --base-100: #eef0f4;
+  --base-300: #c9ced8;
+  --base-500: #7a8394;
+  --base-700: #454c5a;
+  --base-900: #1c2029;
+
+  // Состояния
+  --success-500: #1f9d55;
+  --error-100: #fdecec;
+  --error-500: #d93b3b;
+  --warning-100: #fff6e0;
+  --warning-500: #b7791f;
+
+  --font-family: system-ui, -apple-system, 'Segoe UI', roboto, 'Helvetica Neue', arial, sans-serif;
+  --radius: 0.5rem;
+  --default-transition: 0.2s ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-family);
+  color: var(--base-900);
+  background: var(--base-50);
+}
+
+body {
+  margin: 0;
+
+  @include text(body);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}

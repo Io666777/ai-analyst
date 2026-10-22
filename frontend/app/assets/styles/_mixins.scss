@@ -1,0 +1,46 @@
+// Подключается в каждый <style lang="scss"> автоматически (nuxt.config.ts),
+// поэтому здесь только миксины и SCSS-переменные - ни одного CSS-правила
+
+@use 'sass:list';
+@use 'sass:map';
+
+// Брейкпоинты: до какой ширины экрана включительно (767px, 1279px, 1439px)
+$breakpoints: (
+  mobile: 47.9375rem,
+  tablet: 79.9375rem,
+  laptop: 89.9375rem,
+);
+
+// Стили текста: размер, высота строки, жирность
+$text-styles: (
+  h1: (1.75rem, 1.2, 700),
+  h2: (1.375rem, 1.25, 700),
+  h3: (1.125rem, 1.3, 600),
+  body: (1rem, 1.5, 400),
+  small: (0.875rem, 1.4, 400),
+  caption: (0.75rem, 1.4, 400),
+);
+
+// Адаптив: @include respond-to(mobile) { ... } - стили для экранов не шире мобильного
+@mixin respond-to($device) {
+  @if not map.has-key($breakpoints, $device) {
+    @error 'Нет брейкпоинта «#{$device}». Есть: #{map.keys($breakpoints)}';
+  }
+
+  @media (width <= map.get($breakpoints, $device)) {
+    @content;
+  }
+}
+
+// Типографика: @include text(h1)
+@mixin text($style) {
+  @if not map.has-key($text-styles, $style) {
+    @error 'Нет стиля текста «#{$style}». Есть: #{map.keys($text-styles)}';
+  }
+
+  $values: map.get($text-styles, $style);
+
+  font-size: list.nth($values, 1);
+  line-height: list.nth($values, 2);
+  font-weight: list.nth($values, 3);
+}
