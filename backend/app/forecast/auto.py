@@ -1,27 +1,14 @@
-"""Конвейер: соединяет модули в цепочки - точки входа для интерфейса.
+"""Прогноз автоматически: события -> ступенька холодного старта -> лучшая модель -> горизонт.
 
-prepare_events: файл -> загрузка -> очистка -> события универсальной модели
-prepare_table:  уже прочитанная таблица -> очистка -> события
-make_forecast:  события -> ступенька холодного старта -> лучшая модель -> горизонт -> прогноз
+Главная функция прогноза для интерфейсов - make_forecast: всё остальное она решает сама.
 """
-
-from pathlib import Path
 
 import pandas as pd
 
-from app.cleaner import clean
 from app.config import CURRENCY, FORECAST_DAYS
-from app.forecast import (
-    COUNTRY,
-    WEEK_DAYS,
-    choose_horizon,
-    horizon_scan,
-    models_for,
-    to_daily,
-)
-from app.forecast_report import money, quality_report
-from app.loader import load
-from app.model import KIND_SALE, available_fields, exclude_objects, to_events
+from app.forecast.horizon import choose_horizon, horizon_scan
+from app.forecast.models import COUNTRY, WEEK_DAYS, models_for, to_daily
+from app.forecast.report import money, quality_report
 
 # Ступеньки холодного старта
 STEP_NONE = "нет прогноза"  # меньше недели истории
@@ -30,48 +17,6 @@ STEP_FORECAST = "прогноз"  # полноценный прогноз луч
 
 RECENT_DAYS = 14  # оценка "если так пойдёт дальше" - по последним двум неделям
 WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
-
-
-def prepare_events(
-    path: Path,
-    mapping: dict[str, str],
-    kind: str = KIND_SALE,
-    sheet: str | None = None,
-    exclude: list[str] | None = None,
-) -> tuple[pd.DataFrame, dict]:
-    # Файл + словарь ролей -> события и общий отчёт. Точка входа для интерфейса.
-    # exclude - товары, которые пользователь решил не учитывать (доставка, комиссии...)
-    sheets = load(path)
-    if not sheets:
-        raise ValueError("В файле нет данных")
-
-    sheet_name = sheet if sheet is not None else next(iter(sheets))  # не указали лист - первый
-    if sheet_name not in sheets:
-        raise ValueError(f"В файле нет листа «{sheet_name}». Есть: {', '.join(sheets)}")
-
-    events, table_report = prepare_table(sheets[sheet_name], mapping, kind, exclude)
-    return events, {"файл": Path(path).name, "лист": sheet_name, **table_report}
-
-
-def prepare_table(
-    table: pd.DataFrame,
-    mapping: dict[str, str],
-    kind: str = KIND_SALE,
-    exclude: list[str] | None = None,
-) -> tuple[pd.DataFrame, dict]:
-    # То же, но для уже прочитанной таблицы: очистка -> события -> исключения.
-    # Отдельно от чтения файла - чтобы интерфейс читал большой файл один раз
-    cleaned, clean_report = clean(table, mapping)
-    events = to_events(cleaned, mapping, kind)
-
-    report = {
-        **clean_report,  # всё из отчёта очистки: сколько строк было, удалено, стало
-        "поля": available_fields(events),
-    }
-    if exclude:
-        events, exclude_report = exclude_objects(events, exclude)
-        report.update(exclude_report)
-    return events, report
 
 
 def sentence(text: str) -> str:

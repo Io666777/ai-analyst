@@ -1,4 +1,4 @@
-"""Тесты аналитики (app/analytics.py) на маленькой таблице, где все ответы считаются в уме.
+"""Тесты аналитики (app/analytics/) на маленькой таблице, где все ответы считаются в уме.
 
 Продажи:
     10.01.2026        Пиво Лидское   A1  10 шт  100
@@ -28,7 +28,7 @@ from app.analytics import (
     last_full_month_vs_previous,
     period_total,
 )
-from app.model import to_events
+from app.data import to_events
 
 MAPPING = {
     "Дата": "date",
