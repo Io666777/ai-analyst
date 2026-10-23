@@ -6,12 +6,11 @@ services:
     plan: free
     rootDir: backend # программа лежит в папке backend
     buildCommand: pip install -r requirements-deploy.txt
-    # $PORT выдаёт Render; headless - не открывать браузер и не спрашивать почту;
-    # gatherUsageStats - не отправлять статистику в Streamlit
-    startCommand: >-
-      python -m streamlit run app/web.py
-      --server.port $PORT --server.address 0.0.0.0
-      --server.headless true --browser.gatherUsageStats false
+    # API на FastAPI; $PORT выдаёт Render
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health # Render проверяет, что сервер жив
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.7 # как в нашем venv
+      - key: FRONTEND_URL # адрес фронта - только ему разрешены запросы из браузера
+        sync: false # значение вписывается в панели Render, когда появится фронт
