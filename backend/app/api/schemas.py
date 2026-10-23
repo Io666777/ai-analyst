@@ -105,3 +105,49 @@ class SettingsApplied(BaseModel):
     country: str
     excluded_rows: int = Field(description="Сколько строк убрано исключениями")
     excluded_amount: float = Field(description="На какую сумму")
+
+
+# ---------- анализ: общее ----------
+
+
+class SeriesPoint(BaseModel):
+    # Точка графика: период и значение. Период - "2026-09" (месяц) или "2026-09-15" (день)
+    period: str = Field(examples=["2026-09"])
+    value: float = Field(examples=[18740.0])
+
+
+# ---------- анализ: обзор ----------
+
+
+class MonthSummary(BaseModel):
+    # Последний полный месяц против предыдущего: "как прошёл месяц?"
+    month: str = Field(examples=["сентябрь 2026"])
+    previous_month: str = Field(examples=["август 2026"])
+    before: float = Field(description="Выручка за прошлый месяц")
+    after: float = Field(description="Выручка за последний полный месяц")
+    change: float = Field(description="Изменение в деньгах")
+    change_percent: float | None = Field(description="Изменение в %; нет - если было 0")
+    per_day_before: float = Field(description="В среднем за день, прошлый месяц")
+    per_day_after: float = Field(description="В среднем за день, последний месяц")
+    per_day_change_percent: float | None = Field(
+        description="Изменение в среднем за день, %: честнее, месяцы разной длины"
+    )
+
+
+class Overview(BaseModel):
+    # Первый экран после разметки
+    currency: str
+    date_from: date
+    date_to: date
+    total: float = Field(description="Выручка за весь период (с учётом исключений)")
+    last_month: MonthSummary | None = Field(
+        description="Нет, если в данных меньше двух полных месяцев - тогда см. last_month_note"
+    )
+    last_month_note: str | None = Field(
+        default=None, examples=["Мало данных: для сравнения нужно хотя бы два полных месяца"]
+    )
+    monthly: list[SeriesPoint] = Field(description="Выручка по полным месяцам - для графика")
+    incomplete: list[str] = Field(
+        description="Неполные месяцы, которых нет на графике",
+        examples=[["декабрь 2011 (данные по 09.12.2011)"]],
+    )
