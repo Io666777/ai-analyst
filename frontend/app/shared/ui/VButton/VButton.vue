@@ -6,7 +6,7 @@
     :aria-busy="loading"
     @click="handleClick"
   >
-    <span v-if="loading" :class="$style.spinner" aria-hidden="true" />
+    <VSpinner v-if="loading" :size="SPINNER_SIZES.small" decorative />
     <span :class="$style.text">
       <slot />
     </span>
@@ -24,6 +24,7 @@
  */
 // shared не зависит от Nuxt: всё из vue - явно (и Storybook собирает компонент без Nuxt)
 import { computed, useCssModule } from 'vue';
+import { SPINNER_SIZES, VSpinner } from '../VSpinner';
 import { BUTTON_SIZES, BUTTON_VARIANTS, type ButtonSize, type ButtonVariant } from './constants';
 
 const props = withDefaults(
@@ -168,20 +169,5 @@ function handleClick(event: MouseEvent): void {
 
 .text {
   user-select: none;
-}
-
-.spinner {
-  width: 1em;
-  height: 1em;
-  border: var(--focus-width) solid currentcolor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

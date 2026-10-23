@@ -6,7 +6,6 @@ export const ROUTES = {
   item: '/analysis/item',
   compare: '/analysis/compare',
   forecast: '/analysis/forecast',
-  uiKit: '/ui-kit',
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
