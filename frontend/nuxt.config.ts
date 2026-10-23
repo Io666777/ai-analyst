@@ -13,10 +13,18 @@ export default defineNuxtConfig({
   components: { dirs: [] },
   imports: { scan: false },
 
-  // Глобальные стили: переменные цветов и шрифтов, сброс браузерных отступов
+  // Адрес API. Локально - сервер FastAPI на 8000 порту, при сборке для сервера
+  // задаётся переменной окружения NUXT_PUBLIC_API_URL
+  runtimeConfig: {
+    public: {
+      apiUrl: 'http://localhost:8000',
+    },
+  },
+
+  // Глобальные стили: дизайн-токены (_variables) и сброс браузерных стилей (_reset)
   css: ['~/assets/styles/main.scss'],
 
-  // Миксины respond-to и text доступны в каждом <style lang="scss" module> без импорта
+  // Миксины (respond-to, text, ellipsis...) доступны в каждом <style lang="scss" module> без импорта
   vite: {
     css: {
       preprocessorOptions: {

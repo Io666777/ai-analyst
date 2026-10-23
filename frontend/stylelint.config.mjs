@@ -10,7 +10,7 @@ export default {
     ],
     // Цвета - только через переменные: var(--primary-500)
     'color-named': 'never',
-    'color-no-hex': [true, { message: 'Цвет - только через переменную из main.scss' }],
+    'color-no-hex': [true, { message: 'Цвет - только через переменную из _variables.scss' }],
     // !important - только для вендорных стилей
     'declaration-no-important': true,
     // Переменные группируются пустыми строками с комментарием: основной цвет, акцент, нейтральные...
@@ -21,7 +21,7 @@ export default {
   overrides: [
     {
       // Переменные цветов объявляются только здесь
-      files: ['app/assets/styles/main.scss'],
+      files: ['app/assets/styles/_variables.scss'],
       rules: { 'color-no-hex': null },
     },
   ],
