@@ -225,3 +225,50 @@ class Comparison(BaseModel):
     warnings: list[str] = Field(
         description="Например: период выходит за пределы данных - сравнение может быть неверным"
     )
+
+
+# ---------- анализ: прогноз ----------
+
+
+class ForecastPoint(BaseModel):
+    # День прогноза: значение и коридор (в 8 случаях из 10 реальность внутри)
+    period: str = Field(examples=["2026-10-01"])
+    value: float
+    lower: float | None = Field(description="Нижняя граница коридора; нет - у простого прогноза")
+    upper: float | None = Field(description="Верхняя граница коридора")
+
+
+class Accuracy(BaseModel):
+    # Насколько верить прогнозу - по экзамену на прошлом
+    level: str = Field(examples=["высокая"])
+    error_percent: float = Field(description="Ошибка по дням в % (WAPE)", examples=[8.0])
+    summary: str = Field(description="Вывод словами")
+    reasons: list[str] = Field(description="Почему такая точность - вычислено из данных")
+
+
+class Estimate(BaseModel):
+    # Ступенька "оценка": простые средние вместо прогноза
+    per_day: float = Field(description="В среднем в день за последние 2 недели")
+    by_weekday: dict[str, float] = Field(examples=[{"пн": 520.0, "сб": 910.0}])
+    projection: float = Field(description="Если так пойдёт дальше - за 30 дней")
+
+
+class Forecast(BaseModel):
+    step: str = Field(
+        description="none - мало данных (меньше недели), estimate - простые средние, "
+        "forecast - прогноз с проверенной точностью",
+        examples=["forecast"],
+    )
+    message: str = Field(description="Итог словами - показать пользователю как есть")
+    currency: str
+    history_days: int = Field(description="Сколько дней истории")
+    model: str | None = Field(default=None, examples=["Prophet"])
+    horizon_days: int | None = Field(default=None, description="На сколько дней вперёд")
+    total: float | None = Field(default=None, description="Итог прогноза за весь горизонт")
+    corridor: tuple[float, float] | None = Field(default=None, description="Коридор итога")
+    accuracy: Accuracy | None = None
+    history: list[SeriesPoint] = Field(
+        default_factory=list, description="Конец истории по дням - для графика «факт + прогноз»"
+    )
+    points: list[ForecastPoint] = Field(default_factory=list, description="Прогноз по дням")
+    estimate: Estimate | None = None

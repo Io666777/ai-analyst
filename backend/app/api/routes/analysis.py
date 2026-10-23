@@ -17,8 +17,12 @@ from app.analytics import (
 )
 from app.api.dependencies import PreparedSession
 from app.api.schemas import (
+    Accuracy,
     Choice,
     Comparison,
+    Estimate,
+    Forecast,
+    ForecastPoint,
     ItemDetail,
     ItemsFound,
     MonthSummary,
@@ -28,7 +32,9 @@ from app.api.schemas import (
     Top,
     TopRow,
 )
+from app.api.sessions import Session
 from app.data import FIELDS, available_fields, numeric_fields
+from app.forecast import STEP_ESTIMATE, STEP_FORECAST, STEP_NONE, make_forecast, to_daily
 
 router = APIRouter(prefix="/analysis", tags=["анализ"])
 
@@ -36,6 +42,15 @@ MONTH_FORMAT = "%Y-%m"  # период точки графика по месяц
 NOT_GROUPED = ("date", "price", "receipt")  # топ по дате, цене или номеру чека бессмыслен
 MAX_TOP = 50  # больше строк в топе не показываем - это уже не топ, а таблица
 MAX_SUGGESTIONS = 20  # подсказок при вводе названия - не больше
+DAY_FORMAT = "%Y-%m-%d"  # период точки графика по дням: "2026-10-01"
+
+# Ступенька холодного старта -> короткий код для фронта
+STEP_CODES = {STEP_NONE: "none", STEP_ESTIMATE: "estimate", STEP_FORECAST: "forecast"}
+# На графике прогноза - конец истории: вдвое длиннее прогноза, но не меньше 60 дней.
+# Вся история рядом с коротким прогнозом его "раздавила" бы
+HISTORY_PER_HORIZON = 2
+MIN_HISTORY_SHOWN = 60
+FORECAST_CACHE_KEY = "forecast"
 
 # Запрос товара: название, его часть или артикул
 ItemQuery = Annotated[
@@ -221,3 +236,68 @@ def compare(
         per_day_change_percent=percent_change(first.per_day, second.per_day),
         warnings=result["предупреждения"],
     )
+
+
+def forecast_points(table: pd.DataFrame) -> list[ForecastPoint]:
+    # Таблица прогноза (ds, yhat, коридор - если модель его считает) -> точки для графика
+    has_corridor = "yhat_lower" in table
+    return [
+        ForecastPoint(
+            period=f"{row.ds:{DAY_FORMAT}}",
+            value=round(float(row.yhat), 2),
+            lower=round(float(row.yhat_lower), 2) if has_corridor else None,
+            upper=round(float(row.yhat_upper), 2) if has_corridor else None,
+        )
+        for row in table.itertuples()
+    ]
+
+
+def build_forecast(session: Session) -> Forecast:
+    # Долгий расчёт: make_forecast (экзамен моделей, выбор горизонта) -> ответ для фронта
+    result = make_forecast(session.events, country=session.country, currency=session.currency)
+    response = Forecast(
+        step=STEP_CODES[result["ступенька"]],
+        message=result["сообщение"],
+        currency=session.currency,
+        history_days=result["история_дней"],
+    )
+    if result["ступенька"] == STEP_ESTIMATE:
+        response.estimate = Estimate(
+            per_day=result["в_среднем_в_день"],
+            by_weekday=result["по_дням_недели"],
+            projection=result["если_так_пойдёт_дальше"],
+        )
+    if result["ступенька"] != STEP_FORECAST:
+        return response
+
+    accuracy = result["точность"]
+    daily = to_daily(session.events)
+    shown = max(MIN_HISTORY_SHOWN, HISTORY_PER_HORIZON * result["горизонт_дней"])
+    history = pd.Series(daily["y"].to_numpy(), index=daily["ds"]).tail(shown)
+
+    response.model = result["модель"]
+    response.horizon_days = result["горизонт_дней"]
+    response.total = result["итого"]
+    response.corridor = result.get("коридор")
+    response.accuracy = Accuracy(
+        level=accuracy["точность"],
+        error_percent=round(accuracy["ошибка_%"], 1),
+        summary=accuracy["вывод"],
+        reasons=accuracy["причины"],
+    )
+    response.history = to_points(history, DAY_FORMAT)
+    response.points = forecast_points(result["прогноз"])
+    return response
+
+
+@router.post("/forecast", summary="Прогноз: посчитать или отдать уже посчитанный")
+def forecast(session: PreparedSession) -> Forecast:
+    """Программа сама проверяет модели на прошлом, выбирает лучшую и горизонт, которому можно
+    верить. Считается от нескольких секунд до минуты - один раз: дальше ответ из памяти сессии,
+    пока не поменяли разметку или настройки."""
+    # Обычная функция, не async: FastAPI выполняет её в отдельном потоке,
+    # и пока считается прогноз, остальные запросы сервера отвечают как обычно
+    with session.lock:  # двойной клик: второй запрос подождёт первый и возьмёт готовое
+        if FORECAST_CACHE_KEY not in session.cache:
+            session.cache[FORECAST_CACHE_KEY] = build_forecast(session)
+        return session.cache[FORECAST_CACHE_KEY]

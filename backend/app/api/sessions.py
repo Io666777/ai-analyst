@@ -37,6 +37,8 @@ class Session:
     country: str = COUNTRY
     cache: dict[Any, Any] = field(default_factory=dict)  # посчитанное: прогноз и т.п.
     last_used: float = 0.0  # когда к сессии обращались в последний раз
+    # Долгие расчёты (прогноз) одной сессии - по очереди: двойной клик не считает дважды
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class SessionNotFoundError(Exception):

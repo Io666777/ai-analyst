@@ -242,6 +242,58 @@ def test_compare_bad_date(shop):
     assert client.get("/api/analysis/compare", params=params, headers=shop).status_code == 422
 
 
+# ---------- прогноз ----------
+
+
+def daily_file(days: int) -> bytes:
+    # Свой файл: по одной продаже в день, начиная с 1 сентября 2026
+    rows = [f"{day:02d}.09.2026;{100 + day}" for day in range(1, days + 1)]
+    return "\n".join(["Дата;Сумма", *rows]).encode("utf-8")
+
+
+def test_forecast_full(shop):
+    response = client.post("/api/analysis/forecast", headers=shop)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["step"] == "forecast"
+    assert body["model"] in ("Prophet", "простой прогноз")
+    assert len(body["points"]) == body["horizon_days"]
+    assert body["points"][0]["period"] == "2026-10-01"  # прогноз - со следующего дня после данных
+    assert body["history"][-1]["period"] == "2026-09-30"  # история - до последнего дня данных
+    assert len(body["history"]) == max(60, 2 * body["horizon_days"])
+    assert body["total"] == pytest.approx(sum(p["value"] for p in body["points"]), abs=1)
+    assert body["accuracy"]["reasons"]  # причины точности есть всегда
+    assert body["message"].startswith(f"Прогноз на {body['horizon_days']} дн.")
+
+
+def test_forecast_is_computed_once(shop, monkeypatch):
+    first = client.post("/api/analysis/forecast", headers=shop).json()
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("прогноз посчитан повторно")
+
+    monkeypatch.setattr("app.api.routes.analysis.make_forecast", must_not_run)
+    second = client.post("/api/analysis/forecast", headers=shop).json()
+    assert second == first  # из памяти сессии, без нового расчёта
+
+
+def test_forecast_estimate_for_short_history():
+    headers = prepare("short.csv", daily_file(20), {"Дата": "date", "Сумма": "amount"})
+    body = client.post("/api/analysis/forecast", headers=headers).json()
+    assert body["step"] == "estimate"  # 20 дней - мало для экзамена: простые средние
+    assert body["estimate"]["projection"] == pytest.approx(body["estimate"]["per_day"] * 30, 0.01)
+    assert body["points"] == []  # прогноза нет - графику нечего рисовать
+    assert body["accuracy"] is None
+
+
+def test_forecast_none_under_a_week():
+    headers = prepare("tiny.csv", daily_file(4), {"Дата": "date", "Сумма": "amount"})
+    body = client.post("/api/analysis/forecast", headers=headers).json()
+    assert body["step"] == "none"
+    assert "через 3 дн." in body["message"]
+
+
 def test_overview_before_mapping():
     session_id = client.post("/api/examples/cafe.csv").json()["session_id"]
     response = client.get("/api/analysis/overview", headers={"X-Session-Id": session_id})
