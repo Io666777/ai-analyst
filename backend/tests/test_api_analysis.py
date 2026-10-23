@@ -80,6 +80,54 @@ def test_overview_respects_exclusions(shop):
     assert after == pytest.approx(before - excluded, abs=0.01)
 
 
+# ---------- топ ----------
+
+
+def test_top_products(shop):
+    response = client.get("/api/analysis/top", params={"top": 3}, headers=shop)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["by"] == "object"
+    assert len(body["rows"]) == 3
+    values = [row["value"] for row in body["rows"]]
+    assert values == sorted(values, reverse=True)  # лидер первым
+    assert body["rows"][0]["name"] == "Пиво Лидское 0.5"
+    # Доля - от всей выручки: у трёх лидеров вместе меньше 100%
+    total = client.get("/api/analysis/overview", headers=shop).json()["total"]
+    assert body["rows"][0]["share_percent"] == pytest.approx(values[0] / total * 100, abs=0.1)
+    assert sum(row["share_percent"] for row in body["rows"]) < 100
+
+
+def test_top_worst_and_extra_field(shop):
+    worst = client.get("/api/analysis/top", params={"worst": True}, headers=shop).json()
+    values = [row["value"] for row in worst["rows"]]
+    assert values == sorted(values)  # худшие - по возрастанию
+
+    brands = client.get("/api/analysis/top", params={"by": "Бренд"}, headers=shop).json()
+    assert brands["by_label"] == "Бренд"  # дополнительное поле - под своим названием
+    assert "Лидское" in [row["name"] for row in brands["rows"]]
+
+
+def test_top_available_fields(shop):
+    body = client.get("/api/analysis/top", headers=shop).json()
+    available = [choice["value"] for choice in body["available"]]
+    assert {"object", "category", "Бренд", "Артикул"} <= set(available)
+    assert not {"date", "amount", "quantity"} & set(available)  # даты и числа - не для топа
+
+
+@pytest.mark.parametrize("by", ["amount", "date", "нет такого"])
+def test_top_wrong_field(shop, by):
+    response = client.get("/api/analysis/top", params={"by": by}, headers=shop)
+    assert response.status_code == 400
+    assert "Можно по" in response.json()["detail"]
+
+
+def test_top_size_limits(shop):
+    assert client.get("/api/analysis/top", params={"top": 0}, headers=shop).status_code == 422
+    assert client.get("/api/analysis/top", params={"top": 51}, headers=shop).status_code == 422
+
+
 def test_overview_before_mapping():
     session_id = client.post("/api/examples/cafe.csv").json()["session_id"]
     response = client.get("/api/analysis/overview", headers={"X-Session-Id": session_id})

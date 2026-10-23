@@ -151,3 +151,21 @@ class Overview(BaseModel):
         description="Неполные месяцы, которых нет на графике",
         examples=[["декабрь 2011 (данные по 09.12.2011)"]],
     )
+
+
+# ---------- анализ: топ ----------
+
+
+class TopRow(BaseModel):
+    name: str = Field(examples=["Пиво Лидское 0.5"])
+    value: float = Field(description="Выручка", examples=[137130.0])
+    share_percent: float = Field(description="Доля от всей выручки, %", examples=[27.5])
+
+
+class Top(BaseModel):
+    by: str = Field(description="По какому полю построен топ", examples=["object"])
+    by_label: str = Field(examples=["товар или услуга"])
+    worst: bool = Field(description="true - худшие, false - лучшие")
+    currency: str
+    available: list[Choice] = Field(description="По каким полям можно строить топ")
+    rows: list[TopRow]

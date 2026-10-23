@@ -1,15 +1,20 @@
 """Ручки разделов анализа: обзор, топ, товар, сравнение, прогноз. Отдают числа - рисует фронт."""
 
-import pandas as pd
-from fastapi import APIRouter
+from typing import Annotated
 
-from app.analytics import by_period, incomplete_periods, last_full_month_vs_previous
+import pandas as pd
+from fastapi import APIRouter, HTTPException, Query, status
+
+from app.analytics import breakdown, by_period, incomplete_periods, last_full_month_vs_previous
 from app.api.dependencies import PreparedSession
-from app.api.schemas import MonthSummary, Overview, SeriesPoint
+from app.api.schemas import Choice, MonthSummary, Overview, SeriesPoint, Top, TopRow
+from app.data import FIELDS, available_fields, numeric_fields
 
 router = APIRouter(prefix="/analysis", tags=["анализ"])
 
 MONTH_FORMAT = "%Y-%m"  # период точки графика по месяцам: "2026-09"
+NOT_GROUPED = ("date", "price", "receipt")  # топ по дате, цене или номеру чека бессмыслен
+MAX_TOP = 50  # больше строк в топе не показываем - это уже не топ, а таблица
 
 
 def to_points(series: pd.Series, period_format: str) -> list[SeriesPoint]:
@@ -55,4 +60,44 @@ def overview(session: PreparedSession) -> Overview:
         last_month_note=note,
         monthly=to_points(by_period(events, "месяц", full_periods_only=True), MONTH_FORMAT),
         incomplete=incomplete_periods(events),
+    )
+
+
+def groupable_fields(events: pd.DataFrame) -> list[Choice]:
+    # По чему можно строить топ: текстовые поля, кроме даты, цены и номера чека.
+    # Подпись - описание основного поля или название дополнительного ("Бренд")
+    numeric = numeric_fields(events)
+    return [
+        Choice(value=field, label=FIELDS.get(field, field))
+        for field in available_fields(events)
+        if field not in numeric and field not in NOT_GROUPED
+    ]
+
+
+@router.get("/top", summary="Топ: лучшие или худшие товары, категории, бренды")
+def top(
+    session: PreparedSession,
+    by: Annotated[str, Query(description="Поле из списка available")] = "object",
+    top: Annotated[int, Query(ge=1, le=MAX_TOP, description="Сколько строк")] = 10,
+    worst: Annotated[bool, Query(description="true - худшие вместо лучших")] = False,
+) -> Top:
+    """Выручка по выбранному полю и доля от всей выручки (а не только от топа)."""
+    available = groupable_fields(session.events)
+    labels = {choice.value: choice.label for choice in available}
+    if by not in labels:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Топ по «{by}» не построить. Можно по: {', '.join(labels)}",
+        )
+    table = breakdown(session.events, by=by, top=top, worst=worst)
+    return Top(
+        by=by,
+        by_label=labels[by],
+        worst=worst,
+        currency=session.currency,
+        available=available,
+        rows=[
+            TopRow(name=str(name), value=float(row["amount"]), share_percent=float(row["доля_%"]))
+            for name, row in table.iterrows()
+        ],
     )
