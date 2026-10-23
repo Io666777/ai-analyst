@@ -29,7 +29,8 @@ class Session:
     file_name: str
     table: pd.DataFrame  # таблица из файла, как есть
     mapping: dict[str, str] | None = None  # роли колонок - после разметки
-    events: pd.DataFrame | None = None  # подготовленные события - после разметки
+    prepared: pd.DataFrame | None = None  # все события после разметки и очистки
+    events: pd.DataFrame | None = None  # события для анализа: prepared минус исключённые
     report: dict | None = None  # отчёт о подготовке
     exclude: list[str] = field(default_factory=list)  # служебные строки, которые не учитывать
     currency: str = CURRENCY

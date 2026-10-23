@@ -3,7 +3,7 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import files, session
+from app.api.routes import files, session, setup
 from app.config import FRONTEND_URL
 
 API_PREFIX = "/api"  # все ручки под /api - не путаются с адресами фронта
@@ -37,5 +37,5 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-for router in (service, files.router, session.router):
+for router in (service, files.router, setup.router, session.router):
     app.include_router(router, prefix=API_PREFIX)

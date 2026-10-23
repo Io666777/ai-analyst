@@ -11,6 +11,7 @@ from fastapi import Depends, Header, HTTPException, status
 from app.api.sessions import Session, SessionNotFoundError, store
 
 SESSION_EXPIRED = "Сессия устарела или удалена - загрузите файл заново"
+NOT_PREPARED = "Сначала разметьте колонки файла"
 
 
 def current_session_id(
@@ -30,6 +31,15 @@ def current_session(session_id: Annotated[str, Depends(current_session_id)]) -> 
         raise HTTPException(status.HTTP_404_NOT_FOUND, SESSION_EXPIRED) from None
 
 
+def prepared_session(session: Annotated[Session, Depends(current_session)]) -> Session:
+    # Сессия с уже размеченными данными - для настроек и разделов анализа.
+    # Разметки ещё нет - 409: запрос правильный, но для него рано
+    if session.events is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, NOT_PREPARED)
+    return session
+
+
 # Короткие имена для параметров ручек
 SessionId = Annotated[str, Depends(current_session_id)]
 CurrentSession = Annotated[Session, Depends(current_session)]
+PreparedSession = Annotated[Session, Depends(prepared_session)]
