@@ -1,14 +1,12 @@
-"""Приложение API: точка входа для uvicorn."""
+"""Приложение API: точка входа для uvicorn. Собирает ручки из routes/ вместе."""
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes import files, session
 from app.config import FRONTEND_URL
 
 API_PREFIX = "/api"  # все ручки под /api - не путаются с адресами фронта
-
-# Группы ручек в Swagger - по разделам
-TAG_SERVICE = "служебное"
 
 app = FastAPI(
     title="AI-аналитик для малого бизнеса",
@@ -30,13 +28,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-router = APIRouter(prefix=API_PREFIX)
+service = APIRouter(tags=["служебное"])
 
 
-@router.get("/health", tags=[TAG_SERVICE], summary="Сервер жив")
+@service.get("/health", summary="Сервер жив")
 def health() -> dict[str, str]:
     """По этой ручке фронт и Render проверяют, что API работает."""
     return {"status": "ok"}
 
 
-app.include_router(router)
+for router in (service, files.router, session.router):
+    app.include_router(router, prefix=API_PREFIX)
