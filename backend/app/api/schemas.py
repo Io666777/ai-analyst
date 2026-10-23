@@ -200,3 +200,28 @@ class ItemDetail(BaseModel):
     last_month: MonthSummary | None = Field(
         description="Последний полный месяц против прошлого; нет - если полных месяцев меньше двух"
     )
+
+
+# ---------- анализ: сравнение периодов ----------
+
+
+class PeriodTotal(BaseModel):
+    date_from: date
+    date_to: date
+    days: int = Field(description="Дней в периоде, включая оба края")
+    value: float = Field(description="Выручка за период")
+    per_day: float = Field(description="В среднем за день")
+
+
+class Comparison(BaseModel):
+    currency: str
+    first: PeriodTotal = Field(description="Было - первый период")
+    second: PeriodTotal = Field(description="Стало - второй период")
+    change: float = Field(description="Изменение в деньгах")
+    change_percent: float | None = Field(description="Изменение в %; нет - если было 0")
+    per_day_change_percent: float | None = Field(
+        description="Изменение в среднем за день, % - честнее, если периоды разной длины"
+    )
+    warnings: list[str] = Field(
+        description="Например: период выходит за пределы данных - сравнение может быть неверным"
+    )

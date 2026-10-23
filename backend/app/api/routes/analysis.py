@@ -1,5 +1,6 @@
 """Ручки разделов анализа: обзор, топ, товар, сравнение, прогноз. Отдают числа - рисует фронт."""
 
+from datetime import date
 from typing import Annotated
 
 import pandas as pd
@@ -8,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.analytics import (
     breakdown,
     by_period,
+    compare_periods,
     find_items,
     incomplete_periods,
     item_detail,
@@ -16,10 +18,12 @@ from app.analytics import (
 from app.api.dependencies import PreparedSession
 from app.api.schemas import (
     Choice,
+    Comparison,
     ItemDetail,
     ItemsFound,
     MonthSummary,
     Overview,
+    PeriodTotal,
     SeriesPoint,
     Top,
     TopRow,
@@ -165,4 +169,55 @@ def item(
         quantity=detail.get("количество"),
         monthly=to_points(detail["динамика"], MONTH_FORMAT),
         last_month=to_month_summary(last_month) if last_month else None,
+    )
+
+
+def percent_change(before: float, after: float) -> float | None:
+    # Изменение в %; было 0 - процента нет: на ноль делить нельзя
+    return round((after - before) / before * 100, 1) if before else None
+
+
+def period_total(date_from: date, date_to: date, value: float) -> PeriodTotal:
+    # Итог периода и среднее за день. Дней - включая оба края: с 1 по 31 марта - 31 день
+    days = (date_to - date_from).days + 1
+    return PeriodTotal(
+        date_from=date_from,
+        date_to=date_to,
+        days=days,
+        value=value,
+        per_day=round(value / days, 2),
+    )
+
+
+@router.get("/compare", summary="Сравнение двух периодов")
+def compare(
+    session: PreparedSession,
+    first_from: Annotated[date, Query(description="Первый период (было): с")],
+    first_to: Annotated[date, Query(description="Первый период: по, включительно")],
+    second_from: Annotated[date, Query(description="Второй период (стало): с")],
+    second_to: Annotated[date, Query(description="Второй период: по, включительно")],
+) -> Comparison:
+    """Было и стало: итог, изменение в деньгах и %, в среднем за день.
+    Период за пределами данных - предупреждение: сравнение может быть нечестным."""
+    for start, end in ((first_from, first_to), (second_from, second_to)):
+        if start > end:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Начало периода ({start:%d.%m.%Y}) позже конца ({end:%d.%m.%Y})",
+            )
+    result = compare_periods(
+        session.events,
+        (first_from.isoformat(), first_to.isoformat()),
+        (second_from.isoformat(), second_to.isoformat()),
+    )
+    first = period_total(first_from, first_to, result["было"])
+    second = period_total(second_from, second_to, result["стало"])
+    return Comparison(
+        currency=session.currency,
+        first=first,
+        second=second,
+        change=result["изменение"],
+        change_percent=result["изменение_%"],
+        per_day_change_percent=percent_change(first.per_day, second.per_day),
+        warnings=result["предупреждения"],
     )

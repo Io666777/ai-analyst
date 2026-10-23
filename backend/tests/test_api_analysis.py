@@ -177,6 +177,71 @@ def test_item_not_found(shop):
     assert response.status_code == 404
 
 
+# ---------- сравнение периодов ----------
+
+
+def periods(first: tuple[str, str], second: tuple[str, str]) -> dict[str, str]:
+    # Параметры адреса для /compare
+    return {
+        "first_from": first[0],
+        "first_to": first[1],
+        "second_from": second[0],
+        "second_to": second[1],
+    }
+
+
+def total_between(headers: dict[str, str], start: str, end: str) -> float:
+    # Выручка с start по end включительно - прямо по событиям сессии
+    events = store.get(headers["X-Session-Id"]).events
+    dates = events["date"].dt.strftime("%Y-%m-%d")
+    return events.loc[(dates >= start) & (dates <= end), "amount"].sum()
+
+
+def test_compare_march_to_march(shop):
+    params = periods(("2025-03-01", "2025-03-31"), ("2026-03-01", "2026-03-31"))
+    response = client.get("/api/analysis/compare", params=params, headers=shop)
+    assert response.status_code == 200
+    body = response.json()
+
+    before = total_between(shop, "2025-03-01", "2025-03-31")
+    after = total_between(shop, "2026-03-01", "2026-03-31")
+    assert body["first"]["value"] == pytest.approx(before, abs=0.01)
+    assert body["second"]["value"] == pytest.approx(after, abs=0.01)
+    assert body["first"]["days"] == 31
+    assert body["change_percent"] == pytest.approx((after - before) / before * 100, abs=0.1)
+    assert body["warnings"] == []
+
+
+def test_compare_per_day_for_different_lengths(shop):
+    # Январь (31 день) против февраля (28): в среднем за день - честнее, чем за месяц
+    params = periods(("2026-01-01", "2026-01-31"), ("2026-02-01", "2026-02-28"))
+    body = client.get("/api/analysis/compare", params=params, headers=shop).json()
+    assert body["first"]["per_day"] == pytest.approx(body["first"]["value"] / 31, abs=0.01)
+    assert body["second"]["per_day"] == pytest.approx(body["second"]["value"] / 28, abs=0.01)
+    assert body["per_day_change_percent"] > body["change_percent"]  # февраль короче
+
+
+def test_compare_outside_data(shop):
+    # Первый период - до начала данных: было 0, процента нет, есть предупреждение
+    params = periods(("2020-01-01", "2020-01-31"), ("2026-01-01", "2026-01-31"))
+    body = client.get("/api/analysis/compare", params=params, headers=shop).json()
+    assert body["first"]["value"] == 0
+    assert body["change_percent"] is None
+    assert len(body["warnings"]) == 1
+
+
+def test_compare_reversed_period(shop):
+    params = periods(("2026-03-31", "2026-03-01"), ("2026-04-01", "2026-04-30"))
+    response = client.get("/api/analysis/compare", params=params, headers=shop)
+    assert response.status_code == 400
+    assert "позже конца" in response.json()["detail"]
+
+
+def test_compare_bad_date(shop):
+    params = periods(("2026-02-30", "2026-03-01"), ("2026-04-01", "2026-04-30"))
+    assert client.get("/api/analysis/compare", params=params, headers=shop).status_code == 422
+
+
 def test_overview_before_mapping():
     session_id = client.post("/api/examples/cafe.csv").json()["session_id"]
     response = client.get("/api/analysis/overview", headers={"X-Session-Id": session_id})
