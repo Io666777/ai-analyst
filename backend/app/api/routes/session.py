@@ -1,8 +1,8 @@
 """Ручки сессии: удалить свои данные с сервера."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
-from app.api.dependencies import SESSION_EXPIRED, SessionId
+from app.api.dependencies import SessionId, session_expired_error
 from app.api.sessions import SessionNotFoundError, store
 
 router = APIRouter(tags=["сессия"])
@@ -14,4 +14,4 @@ def forget_session(session_id: SessionId) -> None:
     try:
         store.delete(session_id)
     except SessionNotFoundError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, SESSION_EXPIRED) from None
+        raise session_expired_error() from None

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dependencies import ERROR_CODE_HEADER
 from app.api.routes import analysis, files, session, setup
 from app.config import FRONTEND_URL
 
@@ -26,6 +27,9 @@ app.add_middleware(
     allow_origins=[FRONTEND_URL],
     allow_methods=["*"],
     allow_headers=["*"],
+    # Свои заголовки ответа браузер прячет от страницы, пока их явно не разрешить:
+    # фронту нужен код ошибки ("сессия устарела")
+    expose_headers=[ERROR_CODE_HEADER],
 )
 
 service = APIRouter(tags=["служебное"])

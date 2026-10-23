@@ -27,6 +27,29 @@ def test_forget_session():
     again = client.delete("/api/session", headers={"X-Session-Id": session_id})
     assert again.status_code == 404
     assert again.json()["detail"] == SESSION_EXPIRED
+    # Машинный код: по нему фронт отличает "сессия устарела" от "товар не найден"
+    assert again.headers["X-Error-Code"] == "session-expired"
+
+
+def test_expired_session_code_reaches_browser():
+    # Фронт на другом адресе: браузер покажет странице код ошибки, только если он разрешён (CORS)
+    response = client.get(
+        "/api/analysis/overview",
+        headers={"X-Session-Id": "expired-session-id", "Origin": FRONTEND_URL},
+    )
+    assert response.status_code == 404
+    assert response.headers["X-Error-Code"] == "session-expired"
+    assert "x-error-code" in response.headers["access-control-expose-headers"].lower()
+
+
+def test_not_found_item_has_no_session_code():
+    # Другая 404 ("товар не найден") - без кода сессии: фронт не выкинет пользователя на загрузку
+    body = client.post("/api/examples/shop.xlsx").json()
+    headers = {"X-Session-Id": body["session_id"]}
+    client.put("/api/session/mapping", json={"mapping": body["mapping"]}, headers=headers)
+    response = client.get("/api/analysis/item", params={"q": "трактор"}, headers=headers)
+    assert response.status_code == 404
+    assert "X-Error-Code" not in response.headers
 
 
 def test_session_header_required():

@@ -13,11 +13,13 @@
     "lint:fsd": "steiger ./app",
     "lint:check": "npm run lint && npm run lint:style && npm run lint:fsd",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "api:types": "openapi-typescript http://localhost:8000/api/openapi.json -o app/shared/api/schema.d.ts"
   },
   "dependencies": {
     "echarts": "^6.1.0",
     "nuxt": "^4.6.2",
+    "ofetch": "^1.5.1",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0"
   },
@@ -29,6 +31,7 @@
     "@storybook/vue3-vite": "^10.6.3",
     "@vitejs/plugin-vue": "^6.0.10",
     "eslint": "^10.13.0",
+    "openapi-typescript": "^7.13.0",
     "sass-embedded": "^1.106.1",
     "steiger": "^0.8.0",
     "storybook": "^10.6.3",

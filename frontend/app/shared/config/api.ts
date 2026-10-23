@@ -4,6 +4,14 @@ export const API_PREFIX = '/api';
 /** Заголовок, в котором фронт присылает номер сессии. */
 export const SESSION_HEADER = 'X-Session-Id';
 
+/** Заголовок ответа с машинным кодом ошибки (backend/app/api/dependencies.py). */
+export const ERROR_CODE_HEADER = 'X-Error-Code';
+
+/** Машинные коды ошибок API: по ним фронт реагирует, не сравнивая тексты. */
+export const API_ERROR_CODES = {
+  sessionExpired: 'session-expired',
+} as const;
+
 /** Адреса ручек API без префикса. Описание каждой - в Swagger: /api/docs. */
 export const API_ENDPOINTS = {
   health: '/health',
@@ -49,4 +57,5 @@ export const HTTP_STATUS = {
   conflict: 409, // сначала нужно разметить колонки
   tooLarge: 413,
   validation: 422,
+  serverError: 500, // и всё выше - ошибка на стороне сервера
 } as const;

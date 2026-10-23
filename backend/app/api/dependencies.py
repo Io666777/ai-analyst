@@ -13,6 +13,20 @@ from app.api.sessions import Session, SessionNotFoundError, store
 SESSION_EXPIRED = "Сессия устарела или удалена - загрузите файл заново"
 NOT_PREPARED = "Сначала разметьте колонки файла"
 
+# Машинный код ошибки - в заголовке ответа. По нему фронт отличает "сессия устарела"
+# от другой 404 ("товар не найден"), не сравнивая тексты: текст можно поменять, код - нет
+ERROR_CODE_HEADER = "X-Error-Code"
+SESSION_EXPIRED_CODE = "session-expired"
+
+
+def session_expired_error() -> HTTPException:
+    # 404 "сессия устарела" с машинным кодом: фронт вернёт пользователя к загрузке файла
+    return HTTPException(
+        status.HTTP_404_NOT_FOUND,
+        SESSION_EXPIRED,
+        headers={ERROR_CODE_HEADER: SESSION_EXPIRED_CODE},
+    )
+
 
 def current_session_id(
     x_session_id: Annotated[
@@ -28,7 +42,7 @@ def current_session(session_id: Annotated[str, Depends(current_session_id)]) -> 
     try:
         return store.get(session_id)
     except SessionNotFoundError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, SESSION_EXPIRED) from None
+        raise session_expired_error() from None
 
 
 def prepared_session(session: Annotated[Session, Depends(current_session)]) -> Session:
