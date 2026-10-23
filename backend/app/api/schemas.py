@@ -169,3 +169,34 @@ class Top(BaseModel):
     currency: str
     available: list[Choice] = Field(description="По каким полям можно строить топ")
     rows: list[TopRow]
+
+
+# ---------- анализ: товар ----------
+
+
+class ItemsFound(BaseModel):
+    # Подсказки при вводе названия
+    query: str = Field(examples=["пиво"])
+    items: list[str] = Field(examples=[["Пиво Аливария 0.5", "Пиво Лидское 0.5"]])
+    total: int = Field(description="Сколько нашлось всего (в items - не больше 20)")
+
+
+class ItemDetail(BaseModel):
+    # Всё о товаре или о нескольких товарах вместе
+    name: str = Field(
+        description="Название, а для нескольких товаров - запрос и их число",
+        examples=["Пиво Лидское 0.5"],
+    )
+    items: list[str] = Field(description="Какие товары вошли")
+    currency: str
+    first_sale: date
+    last_sale: date
+    amount: float = Field(description="Выручка за весь период")
+    share_percent: float = Field(description="Доля от всей выручки, %")
+    quantity: float | None = Field(description="Продано штук - если в данных есть количество")
+    monthly: list[SeriesPoint] = Field(
+        description="Выручка по полным месяцам всех данных; месяц без продаж - 0"
+    )
+    last_month: MonthSummary | None = Field(
+        description="Последний полный месяц против прошлого; нет - если полных месяцев меньше двух"
+    )

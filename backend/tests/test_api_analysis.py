@@ -128,6 +128,55 @@ def test_top_size_limits(shop):
     assert client.get("/api/analysis/top", params={"top": 51}, headers=shop).status_code == 422
 
 
+# ---------- товар ----------
+
+
+def test_search_items(shop):
+    body = client.get("/api/analysis/items", params={"q": "пиво"}, headers=shop).json()
+    assert body["items"] == ["Пиво Аливария 0.5", "Пиво Крыніца 1.0", "Пиво Лидское 0.5"]
+    assert body["total"] == 3
+
+    by_article = client.get("/api/analysis/items", params={"q": "00-0001"}, headers=shop).json()
+    assert by_article["items"] == ["Пиво Лидское 0.5"]  # по артикулу - точно одна позиция
+
+
+def test_search_items_empty_query(shop):
+    assert client.get("/api/analysis/items", params={"q": ""}, headers=shop).status_code == 422
+
+
+def test_item_detail(shop):
+    response = client.get("/api/analysis/item", params={"q": "лидское"}, headers=shop)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["name"] == "Пиво Лидское 0.5"
+    assert body["share_percent"] == 27.5  # как в топе
+    assert body["quantity"] > 0
+    assert [body["first_sale"], body["last_sale"]] == ["2024-10-01", "2026-09-30"]
+    assert len(body["monthly"]) == 24  # динамика по всем полным месяцам
+    assert body["last_month"]["month"] == "сентябрь 2026"
+    assert body["last_month"]["after"] == body["monthly"][-1]["value"]
+
+
+def test_item_ambiguous_asks_to_clarify(shop):
+    response = client.get("/api/analysis/item", params={"q": "пиво"}, headers=shop)
+    assert response.status_code == 400
+    assert "Уточните" in response.json()["detail"]
+
+
+def test_item_all_matches(shop):
+    body = client.get("/api/analysis/item", params={"q": "пиво", "all": True}, headers=shop).json()
+    assert body["name"] == "пиво (позиций: 3)"
+    assert len(body["items"]) == 3
+    one = client.get("/api/analysis/item", params={"q": "лидское"}, headers=shop).json()
+    assert body["amount"] > one["amount"]  # всё пиво больше одного сорта
+
+
+def test_item_not_found(shop):
+    response = client.get("/api/analysis/item", params={"q": "трактор"}, headers=shop)
+    assert response.status_code == 404
+
+
 def test_overview_before_mapping():
     session_id = client.post("/api/examples/cafe.csv").json()["session_id"]
     response = client.get("/api/analysis/overview", headers={"X-Session-Id": session_id})
