@@ -1,2 +1,3 @@
 // Публичный вход сегмента shared/ui: снаружи импортируем только отсюда
 export * from './VButton';
+export * from './VInput';

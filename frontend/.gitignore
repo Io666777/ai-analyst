@@ -6,6 +6,10 @@
 .cache
 dist
 
+# Собранный Storybook (npm run build-storybook) и его журнал ошибок
+storybook-static
+debug-storybook.log
+
 # Node dependencies
 node_modules
 

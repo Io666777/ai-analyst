@@ -21,7 +21,7 @@
   --base-50: #f7f8fa;
   --base-100: #eef0f4;
   --base-300: #c9ced8;
-  --base-500: #7a8394;
+  --base-500: #636b7a; // второстепенный текст: контраст ≥ 4.5 на белом и --base-50 (норма WCAG AA)
   --base-700: #454c5a;
   --base-900: #1c2029;
 
@@ -48,6 +48,8 @@
   --radius-large: 1rem;
   --border-width: 0.0625rem;
   --focus-width: 0.125rem;
+  --control-height: 2.625rem; // поля и средние кнопки - одной высоты (42px: удобно пальцем)
+  --control-height-small: 2.25rem;
 
   // ---------- тени ----------
   --shadow-small: 0 0.0625rem 0.125rem rgb(28 32 41 / 8%);

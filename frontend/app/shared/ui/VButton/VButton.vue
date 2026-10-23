@@ -22,6 +22,8 @@
  * @example
  * <VButton :loading="isCounting" @click="handleForecast">Посчитать прогноз</VButton>
  */
+// shared не зависит от Nuxt: всё из vue - явно (и Storybook собирает компонент без Nuxt)
+import { computed, useCssModule } from 'vue';
 import { BUTTON_SIZES, BUTTON_VARIANTS, type ButtonSize, type ButtonVariant } from './constants';
 
 const props = withDefaults(
@@ -77,8 +79,8 @@ function handleClick(event: MouseEvent): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  border: 0.0625rem solid transparent;
+  gap: var(--space-2);
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius);
   font-family: inherit;
   cursor: pointer;
@@ -89,8 +91,8 @@ function handleClick(event: MouseEvent): void {
     color var(--default-transition);
 
   &:focus-visible {
-    outline: 0.125rem solid var(--primary-500);
-    outline-offset: 0.125rem;
+    outline: var(--focus-width) solid var(--primary-500);
+    outline-offset: var(--focus-width);
   }
 
   &:disabled {
@@ -118,8 +120,9 @@ function handleClick(event: MouseEvent): void {
     }
   }
 
+  // Текст цветом - на тон темнее: --primary-500 на светлом фоне даёт контраст 4.49 при норме 4.5
   &._secondary {
-    color: var(--primary-500);
+    color: var(--primary-600);
     background: var(--white);
     border-color: var(--primary-300);
 
@@ -134,7 +137,7 @@ function handleClick(event: MouseEvent): void {
   }
 
   &._ghost {
-    color: var(--primary-500);
+    color: var(--primary-600);
     background: transparent;
 
     &:hover:not(:disabled) {
@@ -149,13 +152,15 @@ function handleClick(event: MouseEvent): void {
   // ---------- размер ----------
 
   &._medium {
-    padding: 0.5rem 1.2rem;
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-5);
 
     @include text(body);
   }
 
   &._small {
-    padding: 0.4rem 0.8rem;
+    min-height: var(--control-height-small);
+    padding: var(--space-2) var(--space-3);
 
     @include text(small);
   }
@@ -168,7 +173,7 @@ function handleClick(event: MouseEvent): void {
 .spinner {
   width: 1em;
   height: 1em;
-  border: 0.125rem solid currentcolor;
+  border: var(--focus-width) solid currentcolor;
   border-right-color: transparent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

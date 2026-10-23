@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "lint:style": "stylelint \"app/**/*.{scss,vue}\"",
     "lint:fsd": "steiger ./app",
-    "lint:check": "npm run lint && npm run lint:style && npm run lint:fsd"
+    "lint:check": "npm run lint && npm run lint:style && npm run lint:fsd",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "nuxt": "^4.6.2",
@@ -21,9 +23,14 @@
   "devDependencies": {
     "@feature-sliced/steiger-plugin": "^0.8.0",
     "@nuxt/eslint": "^1.17.0",
+    "@storybook/addon-a11y": "^10.6.3",
+    "@storybook/addon-docs": "^10.6.3",
+    "@storybook/vue3-vite": "^10.6.3",
+    "@vitejs/plugin-vue": "^6.0.10",
     "eslint": "^10.13.0",
     "sass-embedded": "^1.106.1",
     "steiger": "^0.8.0",
+    "storybook": "^10.6.3",
     "stylelint": "^17.16.0",
     "stylelint-config-recommended-vue": "^2.0.0",
     "stylelint-config-standard-scss": "^17.0.0"

@@ -14,29 +14,55 @@
         </VButton>
       </div>
     </section>
+
+    <section :class="$style.block">
+      <h2 :class="$style.blockTitle">VInput</h2>
+      <div :class="$style.grid">
+        <VInput
+          v-model="query"
+          label="Товар"
+          :type="INPUT_TYPES.search"
+          placeholder="Например, пиво"
+          hint="Название, его часть или артикул"
+        />
+        <VInput v-model="currency" label="Валюта" required :error="currencyError" />
+        <VInput v-model="periodStart" label="Период с" :type="INPUT_TYPES.date" />
+        <VInput model-value="shop.xlsx" label="Файл" disabled />
+      </div>
+    </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { BUTTON_SIZES, BUTTON_VARIANTS, VButton } from '~/shared/ui';
+import { BUTTON_SIZES, BUTTON_VARIANTS, INPUT_TYPES, VButton, VInput } from '~/shared/ui';
 
 const LOADING_DEMO_MS = 1500;
 
 const isLoading = ref(false);
+const query = ref('');
+const currency = ref('');
+const periodStart = ref('2026-09-01');
+
+// Пример ошибки: валюта обязательна
+const currencyError = computed(() => (currency.value.trim() ? '' : 'Укажите валюту: р., $, £...'));
+
+let loadingTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Показывает состояние загрузки на полторы секунды. */
 function handleLoadingDemo(): void {
   isLoading.value = true;
-  setTimeout(() => {
+  loadingTimer = setTimeout(() => {
     isLoading.value = false;
   }, LOADING_DEMO_MS);
 }
+
+onBeforeUnmount(() => clearTimeout(loadingTimer));
 </script>
 
 <style lang="scss" module>
 .UiKitPage {
   display: grid;
-  gap: 1.5rem;
+  gap: var(--space-5);
 }
 
 .title {
@@ -49,11 +75,15 @@ function handleLoadingDemo(): void {
 
 .block {
   display: grid;
-  gap: 1rem;
-  padding: 1.5rem;
+  gap: var(--space-4);
+  padding: var(--space-5);
   background: var(--white);
-  border: 0.0625rem solid var(--base-100);
+  border: var(--border-width) solid var(--base-100);
   border-radius: var(--radius);
+
+  @include respond-to(mobile) {
+    padding: var(--space-4);
+  }
 }
 
 .blockTitle {
@@ -63,7 +93,13 @@ function handleLoadingDemo(): void {
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: var(--space-3);
   align-items: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-4);
 }
 </style>
