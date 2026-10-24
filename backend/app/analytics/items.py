@@ -9,7 +9,8 @@ from app.data import available_fields, extra_fields, numeric_fields, require_fie
 
 def find_items(events: pd.DataFrame, query: str) -> list[str]:
     # Все товары, подходящие под запрос, без учёта регистра. Порядок поиска:
-    # 1) точное название, 2) точное значение признака (артикул, код), 3) часть названия
+    # 1) точное название, 2) точное значение признака (артикул, код), 3) часть названия -
+    # сначала те, что начинаются с запроса (см. match_rank)
     require_field(events, "object")
     items = events["object"].dropna().unique()
     text = query.strip().lower()
@@ -26,7 +27,19 @@ def find_items(events: pd.DataFrame, query: str) -> list[str]:
         if len(found):
             return sorted(found)
 
-    return sorted(item for item in items if text in item.lower())
+    found = [item for item in items if text in item.lower()]
+    return sorted(found, key=lambda item: (match_rank(item, text), item))
+
+
+def match_rank(item: str, text: str) -> int:
+    # Чем раньше в названии совпадение, тем выше в подсказках: на "с" сначала "Снеки",
+    # потом "Хлеб Сельский", и лишь затем "Пиво Лидское" (буква внутри слова)
+    name = item.lower()
+    if name.startswith(text):
+        return 0
+    if any(word.startswith(text) for word in name.split()):
+        return 1
+    return 2
 
 
 def find_item(events: pd.DataFrame, query: str) -> str:

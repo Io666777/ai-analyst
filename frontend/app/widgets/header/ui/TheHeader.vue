@@ -31,6 +31,7 @@ const LINKS = [
   { to: ROUTES.home, label: 'Данные' },
   { to: ROUTES.overview, label: 'Обзор' },
   { to: ROUTES.top, label: 'Топ' },
+  { to: ROUTES.item, label: 'Товар' },
 ] as const;
 
 const session = useSession();
@@ -39,7 +40,7 @@ const session = useSession();
 <style lang="scss" module>
 .TheHeader {
   background: var(--white);
-  border-bottom: 1px solid var(--base-100);
+  border-bottom: var(--border-width) solid var(--base-100);
 }
 
 .inner {

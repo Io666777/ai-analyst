@@ -50,7 +50,17 @@
             <tbody>
               <tr v-for="(row, index) in data.rows" :key="row.name">
                 <td :class="$style._number">{{ index + 1 }}</td>
-                <td>{{ row.name }}</td>
+                <td>
+                  <!-- Топ товаров: строка ведёт в карточку товара -->
+                  <NuxtLink
+                    v-if="data.by === ITEM_FIELD"
+                    :to="{ path: ROUTES.item, query: { q: row.name } }"
+                    :class="$style.link"
+                  >
+                    {{ row.name }}
+                  </NuxtLink>
+                  <template v-else>{{ row.name }}</template>
+                </td>
                 <td :class="$style._number">{{ formatMoney(row.value, data.currency) }}</td>
                 <td :class="$style._number">{{ formatPercent(row.share_percent, false) }}</td>
               </tr>
@@ -69,6 +79,8 @@
  * Параметры меняются - топ пересчитывается сам, без кнопки.
  */
 import { computed } from 'vue';
+import { NuxtLink } from '#components';
+import { ROUTES } from '~/shared/config';
 import { capitalize, formatMoney, formatPercent } from '~/shared/lib';
 import {
   ALERT_VARIANTS,
@@ -87,6 +99,8 @@ import { useTop } from '../model/useTop';
 
 /** Больше строк - график выше, чтобы столбцы не сжимались в нитки. */
 const CHART_SIZE_STEP = 10;
+/** Поле «товар»: только у него есть карточка. */
+const ITEM_FIELD = 'object';
 
 const { field, size, worst, data, isLoading, error, fieldOptions, sizeOptions, reload } = useTop();
 
@@ -145,7 +159,7 @@ const chartOption = computed(() =>
   td {
     padding: var(--space-2) var(--space-3);
     text-align: left;
-    border-bottom: 1px solid var(--base-100);
+    border-bottom: var(--border-width) solid var(--base-100);
   }
 
   th {
@@ -162,5 +176,14 @@ const chartOption = computed(() =>
 
 .caption {
   @include visually-hidden;
+}
+
+.link {
+  color: var(--primary-600);
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--primary-500);
+    outline-offset: var(--focus-width);
+  }
 }
 </style>

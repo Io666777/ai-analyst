@@ -240,6 +240,19 @@ def test_find_items_several(events):
         find_item(events, "пиво")
 
 
+def test_find_items_starts_first():
+    # На "с": сначала название с этой буквы, потом слово с неё, потом буква внутри слова
+    events = make_events(
+        [
+            ("2026-01-10", "Пиво Лидское", "Напитки", "P1", 1, 10.0),
+            ("2026-01-10", "Хлеб Сельский", "Хлеб", "H1", 1, 10.0),
+            ("2026-01-10", "Сухарики", "Снеки", "S1", 1, 10.0),
+            ("2026-01-10", "Вода", "Напитки", "W1", 1, 10.0),
+        ]
+    )
+    assert find_items(events, "с") == ["Сухарики", "Хлеб Сельский", "Пиво Лидское"]
+
+
 def test_find_item_not_found(events):
     with pytest.raises(ValueError, match="Не найдено"):
         find_item(events, "кофе")
