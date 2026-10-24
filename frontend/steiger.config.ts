@@ -13,4 +13,10 @@ export default defineConfig([
     files: ['./app/pages/**'],
     rules: { 'fsd/no-layer-public-api': 'off' },
   },
+  {
+    // «Слайс используется в одном месте или нигде» - предупреждение, а не ошибка:
+    // ссылки из app/plugins Steiger не видит (папка вне проверки), а на старте проекта
+    // у многих слайсов пока одна ссылка. Предупреждения всё равно видны в npm run lint:fsd
+    rules: { 'fsd/insignificant-slice': 'warn' },
+  },
 ]);
