@@ -61,11 +61,20 @@
       <template v-else-if="session.state.value.prepared">
         <PreparationReport :prepared="session.state.value.prepared" :field-labels="fieldLabels" />
         <VAlert :variant="ALERT_VARIANTS.success" title="Данные готовы к анализу">
-          Дальше - настройки и разделы: обзор, топ, товар, сравнение периодов, прогноз.
+          Проверьте настройки ниже - и переходите к разделам: обзор, топ, товар, сравнение
+          периодов, прогноз.
         </VAlert>
       </template>
 
       <VAlert v-if="forgetError" :variant="ALERT_VARIANTS.error">{{ forgetError }}</VAlert>
+    </VCard>
+
+    <!-- 4. Настройки анализа: после разметки, пока её не меняют -->
+    <VCard
+      v-if="session.isPrepared.value && !isEditingMapping"
+      title="Настройки анализа"
+    >
+      <ChangeSettings />
     </VCard>
   </div>
 </template>
@@ -73,6 +82,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { PreparationReport, useOptions, useSession } from '~/entities/session';
+import { ChangeSettings } from '~/features/change-settings';
 import { MapColumns } from '~/features/map-columns';
 import { UploadFile } from '~/features/upload-file';
 import { toApiError } from '~/shared/api';
