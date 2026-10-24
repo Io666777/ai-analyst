@@ -439,7 +439,7 @@ export interface components {
             columns: components["schemas"]["ColumnPreview"][];
             /**
              * Mapping
-             * @description Готовая разметка колонок - есть только у тестовых примеров
+             * @description Предложенная разметка: у своего файла - угадана правилами, у тестового примера - эталон
              * @example {
              *       "Выручка, руб": "amount",
              *       "Дата чека": "date"
@@ -447,6 +447,17 @@ export interface components {
              */
             mapping?: {
                 [key: string]: string;
+            } | null;
+            /**
+             * Confidence
+             * @description Уверенность в роли каждой колонки, 0-1: ниже 0.7 - попросить проверить. У примеров нет: эталон проверен
+             * @example {
+             *       "Выручка, руб": 0.4,
+             *       "Дата чека": 0.9
+             *     }
+             */
+            confidence?: {
+                [key: string]: number;
             } | null;
         };
         /** Forecast */

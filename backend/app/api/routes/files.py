@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 from app.api.schemas import ColumnPreview, ExampleInfo, FileOpened
 from app.api.sessions import store
 from app.config import SYNTHETIC_DIR
-from app.data import EXCEL_SUFFIXES, load
+from app.data import EXCEL_SUFFIXES, detect_roles, load
 
 router = APIRouter(tags=["загрузка"])
 
@@ -49,7 +49,12 @@ def preview(table: pd.DataFrame) -> list[ColumnPreview]:
     ]
 
 
-def open_table(name: str, table: pd.DataFrame, mapping: dict[str, str] | None) -> FileOpened:
+def open_table(
+    name: str,
+    table: pd.DataFrame,
+    mapping: dict[str, str],
+    confidence: dict[str, float] | None = None,
+) -> FileOpened:
     # Таблица -> новая сессия и всё, что нужно фронту для разметки
     session_id = store.create(name, table)
     return FileOpened(
@@ -58,6 +63,7 @@ def open_table(name: str, table: pd.DataFrame, mapping: dict[str, str] | None) -
         rows=len(table),
         columns=preview(table),
         mapping=mapping,
+        confidence=confidence,
     )
 
 
@@ -77,7 +83,14 @@ def upload_file(file: UploadFile) -> FileOpened:
         table = read_table(name, data)
     except ValueError as error:  # "не удалось определить кодировку", "в файле нет данных"...
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from None
-    return open_table(name, table, mapping=None)
+    # Роли угадываем правилами - человек только проверяет, а не размечает всё с нуля
+    guesses = detect_roles(table)
+    return open_table(
+        name,
+        table,
+        mapping={str(column): role for column, (role, _) in guesses.items()},
+        confidence={str(column): confidence for column, (_, confidence) in guesses.items()},
+    )
 
 
 @router.get("/examples", summary="Тестовые примеры")

@@ -7,7 +7,6 @@ type Schemas = components['schemas'];
 // ---------- загрузка и настройка ----------
 export type FileOpened = Schemas['FileOpened'];
 export type ColumnPreview = Schemas['ColumnPreview'];
-export type ExampleInfo = Schemas['ExampleInfo'];
 export type Options = Schemas['Options'];
 export type Choice = Schemas['Choice'];
 export type MappingRequest = Schemas['MappingRequest'];

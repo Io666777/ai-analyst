@@ -31,7 +31,15 @@ def test_upload_csv():
         "Выручка, руб",
     ]
     assert body["columns"][0]["examples"] == ["01.10.24", "01.10.24", "01.10.24"]
-    assert body["mapping"] is None  # свой файл размечает человек
+    # Свой файл: роли угаданы правилами, у каждой - уверенность; человек только проверяет
+    assert body["mapping"] == {
+        "Дата чека": "date",
+        "Позиция": "object",
+        "Раздел меню": "category",
+        "Кол-во, шт": "quantity",
+        "Выручка, руб": "amount",
+    }
+    assert set(body["confidence"]) == set(body["mapping"])
 
 
 def test_upload_wrong_format():
@@ -64,6 +72,21 @@ def test_open_example_has_ready_mapping(name):
     # Разметка есть, и каждая размеченная колонка действительно есть в файле
     assert body["mapping"]
     assert set(body["mapping"]) <= column_names
+
+
+@pytest.mark.parametrize("name", list(files.EXAMPLES))
+def test_example_mapping_is_accepted(name):
+    # Готовую разметку примера сервер принимает как есть: все роли - из справочника,
+    # иначе на экране разметки список пустой, а «Готово» - ошибка «Неизвестные роли»
+    roles = {role["value"] for role in client.get("/api/options").json()["roles"]}
+    body = client.post(f"/api/examples/{name}").json()
+    assert set(body["mapping"].values()) <= roles
+
+    headers = {"X-Session-Id": body["session_id"]}
+    response = client.put(
+        "/api/session/mapping", json={"mapping": body["mapping"]}, headers=headers
+    )
+    assert response.status_code == 200
 
 
 def test_open_unknown_example():

@@ -8,6 +8,9 @@
     <slot :id="fieldId" :described-by="describedBy" :invalid="Boolean(error)" />
 
     <p v-if="error" :id="messageId" :class="$style.error" role="alert">{{ error }}</p>
+    <p v-else-if="warning" :id="messageId" :class="$style.warning">
+      <span :class="$style.mark" aria-hidden="true">!</span>{{ warning }}
+    </p>
     <p v-else-if="hint" :id="messageId" :class="$style.hint">{{ hint }}</p>
   </div>
 </template>
@@ -34,12 +37,15 @@ const props = withDefaults(
     hint?: string;
     /** Текст ошибки - показывается вместо подсказки. */
     error?: string;
+    /** Обратить внимание, но это не ошибка: «проверьте, программа не уверена». Вместо подсказки. */
+    warning?: string;
     /** Поле обязательно - звёздочка у подписи. */
     required?: boolean;
   }>(),
   {
     hint: undefined,
     error: undefined,
+    warning: undefined,
     required: false,
   },
 );
@@ -53,7 +59,9 @@ defineSlots<{
 const fieldId = useId();
 const messageId = `${fieldId}-message`;
 
-const describedBy = computed(() => (props.error || props.hint ? messageId : undefined));
+const describedBy = computed(() =>
+  props.error || props.warning || props.hint ? messageId : undefined,
+);
 </script>
 
 <style lang="scss" module>
@@ -84,5 +92,27 @@ const describedBy = computed(() => (props.error || props.hint ? messageId : unde
   color: var(--error-500);
 
   @include text(caption);
+}
+
+// Текст тёмный (контраст), а внимание привлекает жёлтый кружок с «!»
+.warning {
+  display: flex;
+  gap: var(--space-1);
+  align-items: baseline;
+  color: var(--base-900);
+
+  @include text(caption);
+}
+
+.mark {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--white);
+  background: var(--warning-500);
+  border-radius: 50%;
+  font-weight: 700;
 }
 </style>

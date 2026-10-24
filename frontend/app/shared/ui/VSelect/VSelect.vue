@@ -5,6 +5,7 @@
     :label="label"
     :hint="hint"
     :error="error"
+    :warning="warning"
     :required="required"
   >
     <div :class="$style.box">
@@ -60,6 +61,8 @@ withDefaults(
     hint?: string;
     /** Текст ошибки - вместо подсказки, список подсвечивается. */
     error?: string;
+    /** Обратить внимание (не ошибка): «проверьте». Вместо подсказки. */
+    warning?: string;
     /** Список неактивен. */
     disabled?: boolean;
     /** Выбор обязателен - звёздочка у подписи. */
@@ -71,6 +74,7 @@ withDefaults(
     name: undefined,
     hint: undefined,
     error: undefined,
+    warning: undefined,
     disabled: false,
     required: false,
   },

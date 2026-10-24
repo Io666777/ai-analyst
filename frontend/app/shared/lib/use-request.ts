@@ -1,11 +1,11 @@
 // Запрос к серверу с состоянием для экрана: данные, «загружается», текст ошибки.
 // Один и тот же шаблон у всех разделов анализа - пишем его один раз
-import type { Ref, ShallowRef } from 'vue';
+import type { Ref } from 'vue';
 import { ref, shallowRef } from 'vue';
 
 export interface UseRequest<T, Args extends unknown[]> {
   /** Ответ последнего удачного запроса; null - ещё не было. */
-  data: ShallowRef<T | null>;
+  data: Ref<T | null>;
   isLoading: Ref<boolean>;
   /** Текст ошибки для человека; null - ошибки нет. */
   error: Ref<string | null>;
@@ -18,13 +18,15 @@ export interface UseRequest<T, Args extends unknown[]> {
  * Ответ на устаревший запрос (пока ждали, отправили новый) не затирает свежий.
  * @param {(...args: Args) => Promise<T>} request - функция запроса.
  * @param {(error: unknown) => string} toMessage - как превратить ошибку в текст.
+ * @param {Ref<T | null>} [data] - куда класть ответ: своё хранилище, чтобы ответ пережил
+ *   уход со страницы. Не задано - обычная переменная компонента.
  * @returns {UseRequest<T, Args>} состояние и запуск.
  */
 export function useRequest<T, Args extends unknown[] = []>(
   request: (...args: Args) => Promise<T>,
   toMessage: (error: unknown) => string,
+  data: Ref<T | null> = shallowRef<T | null>(null),
 ): UseRequest<T, Args> {
-  const data = shallowRef<T | null>(null);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
   let lastCall = 0;

@@ -1,7 +1,8 @@
-// Топ: выбранные параметры и ответ сервера. Поменяли параметр - топ пересчитался сам
-import type { ComputedRef, Ref, ShallowRef, WritableComputedRef } from 'vue';
-import { computed, onMounted, ref, watch } from 'vue';
-import { useSession } from '~/entities/session';
+// Топ: выбранные параметры и ответ сервера. Поменяли параметр - топ пересчитался сам.
+// Параметры и ответ переживают переключение вкладок (useSessionState)
+import type { ComputedRef, Ref, WritableComputedRef } from 'vue';
+import { computed, onMounted, toRef, watch } from 'vue';
+import { useSession, useSessionState } from '~/entities/session';
 import { type Top, toApiError } from '~/shared/api';
 import { TOP_LIMITS } from '~/shared/config';
 import { useRequest } from '~/shared/lib';
@@ -14,13 +15,19 @@ const TOP_SIZES = [5, TOP_LIMITS.default, 20, TOP_LIMITS.max] as const;
 /** С чего начать: товар, если его разметили, иначе категория. */
 const PREFERRED_FIELDS = ['object', 'category'] as const;
 
+interface TopParams {
+  by: string | undefined;
+  /** Сколько строк - строкой, как в списке выбора. */
+  size: string;
+  worst: boolean;
+}
+
 export interface UseTop {
   /** Поле топа для списка выбора. */
   field: WritableComputedRef<string>;
-  /** Сколько строк - строкой, как в списке выбора. */
   size: Ref<string>;
   worst: Ref<boolean>;
-  data: ShallowRef<Top | null>;
+  data: Ref<Top | null>;
   isLoading: Ref<boolean>;
   error: Ref<string | null>;
   fieldOptions: ComputedRef<SelectOption[]>;
@@ -36,11 +43,20 @@ export function useTop(): UseTop {
   const session = useSession();
   const fields = session.state.value.prepared?.fields ?? [];
 
-  const by = ref<string | undefined>(PREFERRED_FIELDS.find(field => fields.includes(field)));
-  const size = ref(String(TOP_LIMITS.default));
-  const worst = ref(false);
+  const params = useSessionState<TopParams>('top-params', () => ({
+    by: PREFERRED_FIELDS.find(field => fields.includes(field)),
+    size: String(TOP_LIMITS.default),
+    worst: false,
+  }));
+  const by = toRef(params.value, 'by');
+  const size = toRef(params.value, 'size');
+  const worst = toRef(params.value, 'worst');
 
-  const { data, isLoading, error, run } = useRequest(fetchTop, err => toApiError(err).message);
+  const { data, isLoading, error, run } = useRequest(
+    fetchTop,
+    err => toApiError(err).message,
+    useSessionState<Top | null>('top-data', () => null),
+  );
 
   // Поле для списка выбора: не выбрали сами - то, по которому сервер построил топ
   const field = computed({
@@ -67,7 +83,10 @@ export function useTop(): UseTop {
     return run({ by: by.value, top: Number(size.value), worst: worst.value });
   }
 
-  onMounted(reload);
+  // Вернулись на вкладку - топ уже есть, запрашивать заново незачем
+  onMounted(() => {
+    if (!data.value) reload();
+  });
   watch([by, size, worst], reload);
 
   return { field, size, worst, data, isLoading, error, fieldOptions, sizeOptions, reload };

@@ -9,6 +9,9 @@ import { hasMappingErrors, type MappingErrors, validateMapping } from '../lib/va
 
 const NO_ERRORS: MappingErrors = { byColumn: {}, general: [] };
 
+/** Ниже этой уверенности роль угадана наугад - просим проверить (backend/app/data/detect.py). */
+export const CONFIDENT = 0.7;
+
 export interface UseMapColumns {
   /** Колонка → выбранная роль. */
   mapping: Ref<Record<string, string>>;
@@ -16,6 +19,8 @@ export interface UseMapColumns {
   roleOptions: ComputedRef<SelectOption[]>;
   /** Ошибки - показываются после первой попытки отправить. */
   errors: ComputedRef<MappingErrors>;
+  /** Колонки, роль которых угадана неуверенно и ещё не тронута руками. */
+  unsure: ComputedRef<Set<string>>;
   /** Ошибка сервера или загрузки справочника. */
   requestError: Ref<string | null>;
   isLoadingOptions: Ref<boolean>;
@@ -33,14 +38,26 @@ export function useMapColumns(): UseMapColumns {
   const session = useSession();
   const { options, loadOptions } = useOptions();
 
-  const { columns, mapping: applied, suggestedMapping } = session.state.value;
-  const mapping = ref<Record<string, string>>(
-    Object.fromEntries(
-      columns.map(column => [
-        column.name,
-        applied?.[column.name] ?? suggestedMapping?.[column.name] ?? COLUMN_ROLES.ignore,
-      ]),
-    ),
+  const { columns, mapping: applied, suggestedMapping, suggestedConfidence } =
+    session.state.value;
+  const initial: Record<string, string> = Object.fromEntries(
+    columns.map(column => [
+      column.name,
+      applied?.[column.name] ?? suggestedMapping?.[column.name] ?? COLUMN_ROLES.ignore,
+    ]),
+  );
+  const mapping = ref<Record<string, string>>({ ...initial });
+
+  // Неуверенные догадки - только пока разметку не применяли: применённую человек уже проверил
+  const unsureAtStart = applied
+    ? []
+    : columns
+        .map(column => column.name)
+        .filter(name => (suggestedConfidence?.[name] ?? 1) < CONFIDENT);
+
+  // Поменял роль руками - значит, проверил: пометку снимаем
+  const unsure = computed(
+    () => new Set(unsureAtStart.filter(name => mapping.value[name] === initial[name])),
   );
 
   const isSubmitted = ref(false);
@@ -87,5 +104,14 @@ export function useMapColumns(): UseMapColumns {
     }
   }
 
-  return { mapping, roleOptions, errors, requestError, isLoadingOptions, isSaving, submit };
+  return {
+    mapping,
+    roleOptions,
+    errors,
+    unsure,
+    requestError,
+    isLoadingOptions,
+    isSaving,
+    submit,
+  };
 }

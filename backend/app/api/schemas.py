@@ -25,8 +25,15 @@ class FileOpened(BaseModel):
     columns: list[ColumnPreview]
     mapping: dict[str, str] | None = Field(
         default=None,
-        description="Готовая разметка колонок - есть только у тестовых примеров",
+        description="Предложенная разметка: у своего файла - угадана правилами, "
+        "у тестового примера - эталон",
         examples=[{"Дата чека": "date", "Выручка, руб": "amount"}],
+    )
+    confidence: dict[str, float] | None = Field(
+        default=None,
+        description="Уверенность в роли каждой колонки, 0-1: ниже 0.7 - попросить проверить. "
+        "У примеров нет: эталон проверен",
+        examples=[{"Дата чека": 0.9, "Выручка, руб": 0.4}],
     )
 
 

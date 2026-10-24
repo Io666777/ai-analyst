@@ -57,6 +57,15 @@ export const WithError: Story = {
   args: { required: true, error: 'Укажите, где дата - без неё события не привязать ко времени' },
 };
 
+/** Не ошибка, а просьба проверить: программа угадала роль неуверенно. */
+export const WithWarning: Story = {
+  args: {
+    label: 'Колонка «Сумма2»',
+    modelValue: 'amount',
+    warning: 'Проверьте - угадано наугад. Примеры: 120, 85, 40',
+  },
+};
+
 export const Disabled: Story = {
   args: { modelValue: 'amount', disabled: true },
 };

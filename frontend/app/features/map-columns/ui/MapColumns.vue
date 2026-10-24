@@ -1,8 +1,13 @@
 <template>
   <form :class="$style.MapColumns" novalidate @submit.prevent="handleSubmit">
     <p :class="$style.lead">
-      Укажите, что значит каждая колонка. Обязательны дата и сумма (или цена и количество).
-      Колонку с клиентами можно отметить - в анализ она не попадёт.
+      Программа угадала, что значит каждая колонка, - проверьте и поправьте, если нужно.
+      Обязательны дата и сумма (или цена и количество). Личные данные клиентов в анализ
+      не попадут.
+    </p>
+    <p v-if="unsure.size" :class="$style.unsure">
+      Не уверена в {{ pluralize(unsure.size, COLUMN_FORMS) }} -
+      {{ unsure.size === 1 ? 'она помечена' : 'они помечены' }} «!».
     </p>
 
     <VSpinner v-if="isLoadingOptions" label="Загружаю список ролей..." show-label />
@@ -15,6 +20,11 @@
         :label="column.name"
         :options="roleOptions"
         :hint="examplesHint(column.examples)"
+        :warning="
+          unsure.has(column.name)
+            ? `Проверьте - угадано наугад. ${examplesHint(column.examples)}`
+            : undefined
+        "
         :error="errors.byColumn[column.name]"
       />
     </div>
@@ -54,6 +64,7 @@
 import type { DeepReadonly } from 'vue';
 import { computed } from 'vue';
 import { useSession } from '~/entities/session';
+import { pluralize, type WordForms } from '~/shared/lib';
 import { ALERT_VARIANTS, BUTTON_VARIANTS, VAlert, VButton, VSelect, VSpinner } from '~/shared/ui';
 import { useMapColumns } from '../model/useMapColumns';
 
@@ -73,8 +84,11 @@ const emit = defineEmits<{
 }>();
 
 const session = useSession();
-const { mapping, roleOptions, errors, requestError, isLoadingOptions, isSaving, submit } =
+const { mapping, roleOptions, errors, unsure, requestError, isLoadingOptions, isSaving, submit } =
   useMapColumns();
+
+// «Не уверена в 2 колонках» - предложный падеж: «в колонке», «в колонках»
+const COLUMN_FORMS: WordForms = { one: 'колонке', few: 'колонках', many: 'колонках' };
 
 const columns = computed(() => session.state.value.columns);
 
@@ -101,6 +115,12 @@ async function handleSubmit(): Promise<void> {
 
 .lead {
   color: var(--base-700);
+
+  @include text(small);
+}
+
+.unsure {
+  color: var(--base-900);
 
   @include text(small);
 }

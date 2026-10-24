@@ -16,7 +16,6 @@ export const API_ERROR_CODES = {
 export const API_ENDPOINTS = {
   health: '/health',
   options: '/options',
-  examples: '/examples',
   files: '/files',
   session: '/session',
   mapping: '/session/mapping',
@@ -28,15 +27,6 @@ export const API_ENDPOINTS = {
   compare: '/analysis/compare',
   forecast: '/analysis/forecast',
 } as const;
-
-/**
- * Адрес ручки открытия тестового примера.
- * @param {string} name - имя файла примера, например "cafe.csv".
- * @returns {string} адрес ручки без префикса.
- */
-export function exampleEndpoint(name: string): string {
-  return `${API_ENDPOINTS.examples}/${encodeURIComponent(name)}`;
-}
 
 // Ограничения - те же, что на сервере. Проверяем до отправки, чтобы не гонять файл по сети зря
 

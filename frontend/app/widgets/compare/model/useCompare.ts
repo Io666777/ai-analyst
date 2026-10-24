@@ -1,7 +1,7 @@
 // Сравнение периодов: даты, готовые варианты, проверка, ответ сервера
-import type { ComputedRef, Ref, ShallowRef } from 'vue';
+import type { ComputedRef, Ref } from 'vue';
 import { computed, onMounted, ref } from 'vue';
-import { useSession } from '~/entities/session';
+import { useSession, useSessionState } from '~/entities/session';
 import { type Comparison, toApiError } from '~/shared/api';
 import { useRequest } from '~/shared/lib';
 import { fetchComparison } from '../api/compare-api';
@@ -23,7 +23,7 @@ export interface UseCompare {
   preset: Ref<Preset | null>;
   /** Ошибки полей - после первой попытки сравнить. */
   errors: ComputedRef<PeriodErrors>;
-  data: ShallowRef<Comparison | null>;
+  data: Ref<Comparison | null>;
   isLoading: Ref<boolean>;
   error: Ref<string | null>;
   /** Поменять одну дату руками. */
@@ -42,12 +42,18 @@ export function useCompare(): UseCompare {
   const session = useSession();
   const dataEnd = session.state.value.prepared?.date_to;
 
-  const pair = ref<PeriodPair>({ first: { from: '', to: '' }, second: { from: '', to: '' } });
-  const preset = ref<Preset | null>(null);
+  // Даты, выбранный вариант и ответ переживают переключение вкладок
+  const pair = useSessionState<PeriodPair>('compare-pair', () => ({
+    first: { from: '', to: '' },
+    second: { from: '', to: '' },
+  }));
+  const preset = useSessionState<Preset | null>('compare-preset', () => null);
   const isSubmitted = ref(false);
 
-  const { data, isLoading, error, run } = useRequest(fetchComparison, err =>
-    toApiError(err).message,
+  const { data, isLoading, error, run } = useRequest(
+    fetchComparison,
+    err => toApiError(err).message,
+    useSessionState<Comparison | null>('compare-data', () => null),
   );
 
   const errors = computed(() => (isSubmitted.value ? validatePeriods(pair.value) : {}));
@@ -81,7 +87,10 @@ export function useCompare(): UseCompare {
     await submit();
   }
 
-  onMounted(() => applyPreset(PRESETS.monthToMonth));
+  // Первый заход - месяц к месяцу; вернулись на вкладку - прежнее сравнение уже на экране
+  onMounted(() => {
+    if (!data.value) applyPreset(PRESETS.monthToMonth);
+  });
 
   return { pair, preset, errors, data, isLoading, error, setDate, applyPreset, submit };
 }

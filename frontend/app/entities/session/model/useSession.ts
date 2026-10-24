@@ -16,7 +16,6 @@ import { ApiError } from '~/shared/api';
 import { DEFAULT_COUNTRY, DEFAULT_CURRENCY } from '~/shared/config';
 import {
   deleteSession,
-  openExampleFile,
   putMapping,
   putSettings,
   uploadFile,
@@ -36,8 +35,10 @@ export interface SessionState {
   fileName: string | null;
   rows: number;
   columns: ColumnPreview[];
-  /** Готовая разметка - есть только у тестовых примеров. */
+  /** Разметка, угаданная сервером по названиям и значениям колонок. */
   suggestedMapping: Record<string, string> | null;
+  /** Уверенность в угаданной роли каждой колонки, 0-1. */
+  suggestedConfidence: Record<string, number> | null;
   /** Применённая разметка. */
   mapping: Record<string, string> | null;
   /** Отчёт подготовки; null - колонки ещё не размечены. */
@@ -45,6 +46,11 @@ export interface SessionState {
   settings: SessionSettings;
   /** Сессия устарела на сервере - показать «загрузите файл заново». */
   expired: boolean;
+  /**
+   * Версия данных: растёт при новом файле, разметке, настройках и удалении.
+   * Состояние разделов (useSessionState) живёт, пока версия та же.
+   */
+  dataVersion: number;
 }
 
 /**
@@ -58,10 +64,12 @@ function emptySession(): SessionState {
     rows: 0,
     columns: [],
     suggestedMapping: null,
+    suggestedConfidence: null,
     mapping: null,
     prepared: null,
     settings: { exclude: [], currency: DEFAULT_CURRENCY, country: DEFAULT_COUNTRY },
     expired: false,
+    dataVersion: 0,
   };
 }
 
@@ -73,7 +81,6 @@ export interface UseSession {
   /** Колонки размечены - можно смотреть разделы анализа. */
   isPrepared: ComputedRef<boolean>;
   openFile: (file: File) => Promise<FileOpened>;
-  openExample: (name: string) => Promise<FileOpened>;
   applyMapping: (mapping: Record<string, string>) => Promise<PreparedData>;
   applySettings: (settings: SettingsRequest) => Promise<SettingsApplied>;
   forget: () => Promise<void>;
@@ -88,6 +95,14 @@ export function useSession(): UseSession {
   const state = useState<SessionState>(SESSION_STATE_KEY, emptySession);
 
   /**
+   * Следующая версия данных: всё посчитанное разделами по прежним данным - сбросится.
+   * @returns {number} новая версия.
+   */
+  function nextVersion(): number {
+    return state.value.dataVersion + 1;
+  }
+
+  /**
    * Новая сессия: запоминаем, что открыли, а всё прежнее забываем.
    * @param {FileOpened} opened - ответ сервера на загрузку файла или примера.
    * @returns {FileOpened} тот же ответ - для цепочки.
@@ -100,6 +115,8 @@ export function useSession(): UseSession {
       rows: opened.rows,
       columns: opened.columns,
       suggestedMapping: opened.mapping ?? null,
+      suggestedConfidence: opened.confidence ?? null,
+      dataVersion: nextVersion(),
     };
     return opened;
   }
@@ -114,15 +131,6 @@ export function useSession(): UseSession {
   }
 
   /**
-   * Открыть тестовый пример.
-   * @param {string} name - имя файла примера.
-   * @returns {Promise<FileOpened>} колонки и готовая разметка.
-   */
-  async function openExample(name: string): Promise<FileOpened> {
-    return start(await openExampleFile(name));
-  }
-
-  /**
    * Разметить колонки. Сервер сбрасывает исключения - сбрасываем и у себя.
    * @param {Record<string, string>} mapping - колонка -> роль.
    * @returns {Promise<PreparedData>} отчёт о подготовке.
@@ -132,6 +140,7 @@ export function useSession(): UseSession {
     state.value.mapping = { ...mapping };
     state.value.prepared = prepared;
     state.value.settings.exclude = [];
+    state.value.dataVersion = nextVersion();
     return prepared;
   }
 
@@ -147,6 +156,7 @@ export function useSession(): UseSession {
       currency: applied.currency,
       country: applied.country,
     };
+    state.value.dataVersion = nextVersion();
     return applied;
   }
 
@@ -160,12 +170,12 @@ export function useSession(): UseSession {
     } catch (error) {
       if (!(error instanceof ApiError && error.isSessionExpired)) throw error;
     }
-    state.value = emptySession();
+    state.value = { ...emptySession(), dataVersion: nextVersion() };
   }
 
   /** Сессия устарела на сервере: забываем и помечаем - главная покажет сообщение. */
   function expire(): void {
-    state.value = { ...emptySession(), expired: true };
+    state.value = { ...emptySession(), expired: true, dataVersion: nextVersion() };
   }
 
   return {
@@ -175,7 +185,6 @@ export function useSession(): UseSession {
     isOpened: computed(() => state.value.id !== null),
     isPrepared: computed(() => state.value.prepared !== null),
     openFile,
-    openExample,
     applyMapping,
     applySettings,
     forget,
