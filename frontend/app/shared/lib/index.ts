@@ -3,3 +3,4 @@ export * from './format-date';
 export * from './format-number';
 export * from './pluralize';
 export * from './trend';
+export * from './use-request';

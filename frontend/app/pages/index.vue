@@ -61,8 +61,8 @@
       <template v-else-if="session.state.value.prepared">
         <PreparationReport :prepared="session.state.value.prepared" :field-labels="fieldLabels" />
         <VAlert :variant="ALERT_VARIANTS.success" title="Данные готовы к анализу">
-          Проверьте настройки ниже - и переходите к разделам: обзор, топ, товар, сравнение
-          периодов, прогноз.
+          Проверьте настройки ниже - и переходите к разделам.
+          <NuxtLink :to="ROUTES.overview" :class="$style.link">Перейти к обзору →</NuxtLink>
         </VAlert>
       </template>
 
@@ -81,11 +81,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { NuxtLink } from '#components';
 import { PreparationReport, useOptions, useSession } from '~/entities/session';
 import { ChangeSettings } from '~/features/change-settings';
 import { MapColumns } from '~/features/map-columns';
 import { UploadFile } from '~/features/upload-file';
 import { toApiError } from '~/shared/api';
+import { ROUTES } from '~/shared/config';
 import { pluralize, type WordForms } from '~/shared/lib';
 import {
   ALERT_VARIANTS,
@@ -159,5 +161,16 @@ async function handleForget(): Promise<void> {
   color: var(--base-500);
 
   @include text(small);
+}
+
+.link {
+  color: var(--primary-600);
+  font-weight: 600;
+  white-space: nowrap;
+
+  &:focus-visible {
+    outline: var(--focus-width) solid var(--primary-500);
+    outline-offset: var(--focus-width);
+  }
 }
 </style>

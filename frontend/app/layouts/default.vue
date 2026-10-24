@@ -1,10 +1,15 @@
 <template>
   <div :class="$style.DefaultLayout">
+    <TheHeader />
     <main :class="$style.main">
       <slot />
     </main>
   </div>
 </template>
+
+<script setup lang="ts">
+import { TheHeader } from '~/widgets/header';
+</script>
 
 <style lang="scss" module>
 .DefaultLayout {
