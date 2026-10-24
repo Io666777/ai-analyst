@@ -70,7 +70,7 @@
 import { onMounted } from 'vue';
 import { RevenueChart } from '~/entities/revenue';
 import { toApiError } from '~/shared/api';
-import { formatDate, formatMoney, useRequest } from '~/shared/lib';
+import { capitalize, formatDate, formatMoney, useRequest } from '~/shared/lib';
 import {
   ALERT_VARIANTS,
   BUTTON_VARIANTS,
@@ -85,15 +85,6 @@ import { fetchOverview } from '../api/overview-api';
 const { data, isLoading, error, run } = useRequest(fetchOverview, err => toApiError(err).message);
 
 onMounted(run);
-
-/**
- * Первая буква - заглавная: «август 2026» → «Август 2026».
- * @param {string} text - текст.
- * @returns {string} текст с заглавной буквы.
- */
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 </script>
 
 <style lang="scss" module>

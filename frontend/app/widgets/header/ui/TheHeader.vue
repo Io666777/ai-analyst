@@ -30,6 +30,7 @@ import { ROUTES } from '~/shared/config';
 const LINKS = [
   { to: ROUTES.home, label: 'Данные' },
   { to: ROUTES.overview, label: 'Обзор' },
+  { to: ROUTES.top, label: 'Топ' },
 ] as const;
 
 const session = useSession();
