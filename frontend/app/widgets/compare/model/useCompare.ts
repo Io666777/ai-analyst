@@ -1,54 +1,41 @@
-// Сравнение периодов: даты, готовые варианты, проверка, ответ сервера
-import type { ComputedRef, Ref } from 'vue';
-import { computed, onMounted, ref } from 'vue';
+// Сравнение периодов: два периода, готовые варианты, ответ сервера.
+// Выбрали период в календаре - сравнение пересчитывается само
+import type { Ref } from 'vue';
+import { onMounted } from 'vue';
 import { useSession, useSessionState } from '~/entities/session';
 import { type Comparison, toApiError } from '~/shared/api';
 import { useRequest } from '~/shared/lib';
+import type { DateRange } from '~/shared/ui';
 import { fetchComparison } from '../api/compare-api';
-import { type Period, type PeriodPair, type Preset, PRESETS, presetPeriods } from '../lib/presets';
-import { type PeriodErrors, validatePeriods } from '../lib/validate-periods';
-
-/**
- * Копия пары периодов. Не structuredClone: он не копирует реактивные объекты Vue (Proxy).
- * @param {PeriodPair} pair - пара.
- * @returns {PeriodPair} независимая копия.
- */
-function copyPair(pair: PeriodPair): PeriodPair {
-  return { first: { ...pair.first }, second: { ...pair.second } };
-}
+import { type PeriodPair, type Preset, PRESETS, presetPeriods } from '../lib/presets';
 
 export interface UseCompare {
   pair: Ref<PeriodPair>;
-  /** Выбранный готовый вариант; null - даты введены руками. */
+  /** Выбранный готовый вариант; null - периоды выбраны в календаре. */
   preset: Ref<Preset | null>;
-  /** Ошибки полей - после первой попытки сравнить. */
-  errors: ComputedRef<PeriodErrors>;
   data: Ref<Comparison | null>;
   isLoading: Ref<boolean>;
   error: Ref<string | null>;
-  /** Поменять одну дату руками. */
-  setDate: (period: keyof PeriodPair, edge: keyof Period, value: string) => void;
-  /** Готовый вариант: поставить даты и сразу сравнить. */
+  /** Выбран период в календаре - сравнить. */
+  setPeriod: (period: keyof PeriodPair, range: DateRange) => Promise<void>;
+  /** Готовый вариант: поставить периоды и сравнить. */
   applyPreset: (value: Preset) => Promise<void>;
-  /** Сравнить введённые даты. */
-  submit: () => Promise<void>;
 }
 
 /**
  * Сравнение двух периодов. При открытии - последний полный месяц против предыдущего.
- * @returns {UseCompare} даты, варианты, ответ и действия.
+ * @returns {UseCompare} периоды, варианты, ответ и действия.
  */
 export function useCompare(): UseCompare {
   const session = useSession();
   const dataEnd = session.state.value.prepared?.date_to;
 
-  // Даты, выбранный вариант и ответ переживают переключение вкладок
+  // Периоды, выбранный вариант и ответ переживают переключение вкладок
   const pair = useSessionState<PeriodPair>('compare-pair', () => ({
     first: { from: '', to: '' },
     second: { from: '', to: '' },
   }));
   const preset = useSessionState<Preset | null>('compare-preset', () => null);
-  const isSubmitted = ref(false);
 
   const { data, isLoading, error, run } = useRequest(
     fetchComparison,
@@ -56,35 +43,33 @@ export function useCompare(): UseCompare {
     useSessionState<Comparison | null>('compare-data', () => null),
   );
 
-  const errors = computed(() => (isSubmitted.value ? validatePeriods(pair.value) : {}));
+  /** Сравнить, если оба периода выбраны. */
+  async function compare(): Promise<void> {
+    const { first, second } = pair.value;
+    if (!first.from || !first.to || !second.from || !second.to) return;
+    await run({ first: { ...first }, second: { ...second } });
+  }
 
   /**
-   * Поменять одну дату руками - это уже не готовый вариант.
+   * Период выбран в календаре - это уже не готовый вариант.
    * @param {keyof PeriodPair} period - first (было) или second (стало).
-   * @param {keyof Period} edge - from или to.
-   * @param {string} value - дата "2026-09-01" или пусто.
+   * @param {DateRange} range - выбранный период.
    */
-  function setDate(period: keyof PeriodPair, edge: keyof Period, value: string): void {
-    pair.value[period][edge] = value;
+  async function setPeriod(period: keyof PeriodPair, range: DateRange): Promise<void> {
+    pair.value[period] = { ...range };
     preset.value = null;
-  }
-
-  /** Проверить и сравнить. */
-  async function submit(): Promise<void> {
-    isSubmitted.value = true;
-    if (Object.keys(validatePeriods(pair.value)).length) return;
-    await run(copyPair(pair.value));
+    await compare();
   }
 
   /**
-   * Готовый вариант: даты от последнего дня данных - и сразу сравнение.
+   * Готовый вариант: периоды от последнего дня данных - и сразу сравнение.
    * @param {Preset} value - какой вариант.
    */
   async function applyPreset(value: Preset): Promise<void> {
     if (!dataEnd) return;
     pair.value = presetPeriods(value, dataEnd);
     preset.value = value;
-    await submit();
+    await compare();
   }
 
   // Первый заход - месяц к месяцу; вернулись на вкладку - прежнее сравнение уже на экране
@@ -92,5 +77,5 @@ export function useCompare(): UseCompare {
     if (!data.value) applyPreset(PRESETS.monthToMonth);
   });
 
-  return { pair, preset, errors, data, isLoading, error, setDate, applyPreset, submit };
+  return { pair, preset, data, isLoading, error, setPeriod, applyPreset };
 }

@@ -74,7 +74,8 @@ const {
 const appliedText = computed(() => {
   if (!applied.value?.excluded_rows) return 'Все строки учитываются в анализе.';
   const { excluded_rows: rows, excluded_amount: amount, currency: unit } = applied.value;
-  return `Не учитывается ${pluralize(rows, ROW_FORMS)} на ${formatMoney(amount, unit)}.`;
+  // Без точки в конце: валюта «р.» сама кончается точкой - вышло бы «р..»
+  return `Не учитывается ${pluralize(rows, ROW_FORMS)} на ${formatMoney(amount, unit)}`;
 });
 
 /**

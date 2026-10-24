@@ -45,17 +45,41 @@
       </VCard>
 
       <VCard title="Выручка по месяцам">
-        <RevenueChart
-          v-if="data.monthly.length"
-          :points="data.monthly"
-          :currency="data.currency"
-          :download-name="`выручка-${data.name}`"
-        />
+        <template v-if="data.monthly.length">
+          <p :class="$style.note">
+            Нажмите на месяц - покажу продажи по дням. Месяцы - по всем данным: месяц без продаж
+            этого товара показан нулём.
+          </p>
+          <RevenueChart
+            :points="data.monthly"
+            :currency="data.currency"
+            :download-name="`выручка-${data.name}`"
+            selectable
+            :selected="month"
+            @select="openMonth"
+          />
+          <!-- То же без мыши: по холсту графика не пройти клавиатурой, по списку - можно -->
+          <VSelect
+            v-model="monthModel"
+            :class="$style.monthSelect"
+            label="Месяц по дням"
+            placeholder="Выберите месяц"
+            :options="monthOptions"
+          />
+        </template>
         <p v-else :class="$style.note">Нет ни одного полного месяца - графику не из чего строиться.</p>
-        <p v-if="data.monthly.length" :class="$style.note">
-          Месяцы - по всем данным: месяц без продаж этого товара показан нулём.
-        </p>
       </VCard>
+
+      <section v-if="month" ref="details" :class="$style.details">
+        <VCard :title="`${capitalize(formatMonth(month))}: ${data.name}`">
+          <template #actions>
+            <VButton :variant="BUTTON_VARIANTS.ghost" :size="BUTTON_SIZES.small" @click="openMonth('')">
+              Скрыть
+            </VButton>
+          </template>
+          <ItemMonth :query="query" :all="all" :items="data.items" :month="month" />
+        </VCard>
+      </section>
     </template>
   </div>
 </template>
@@ -68,12 +92,26 @@
  * @example
  * <ItemPanel query="Пиво Лидское 0.5" :all="false" />
  */
-import { watch } from 'vue';
+import { computed, nextTick, useTemplateRef, watch } from 'vue';
 import { RevenueChart } from '~/entities/revenue';
+import { useSessionState } from '~/entities/session';
 import { toApiError } from '~/shared/api';
-import { capitalize, formatDate, formatMoney, useRequest } from '~/shared/lib';
-import { ALERT_VARIANTS, METRIC_FORMATS, VAlert, VCard, VMetric, VSpinner } from '~/shared/ui';
+import { capitalize, formatDate, formatMoney, formatMonth, useRequest } from '~/shared/lib';
+import {
+  ALERT_VARIANTS,
+  BUTTON_SIZES,
+  BUTTON_VARIANTS,
+  METRIC_FORMATS,
+  type SelectOption,
+  VAlert,
+  VButton,
+  VCard,
+  VMetric,
+  VSelect,
+  VSpinner,
+} from '~/shared/ui';
 import { fetchItem } from '../api/item-api';
+import ItemMonth from './ItemMonth.vue';
 
 const props = defineProps<{
   /** Название товара, а для all - запрос. */
@@ -83,6 +121,35 @@ const props = defineProps<{
 }>();
 
 const { data, isLoading, error, run } = useRequest(fetchItem, err => toApiError(err).message);
+
+// Открытый месяц запоминается вместе с товаром: открыли другой товар - месяц не переносится
+const opened = useSessionState<{ item: string; month: string } | null>('item-month', () => null);
+const itemKey = computed(() => `${props.query}|${props.all}`);
+const month = computed(() => (opened.value?.item === itemKey.value ? opened.value.month : null));
+const details = useTemplateRef<HTMLElement>('details');
+
+// Список выбора: свежие месяцы сверху
+const monthOptions = computed<SelectOption[]>(() =>
+  [...(data.value?.monthly ?? [])]
+    .reverse()
+    .map(point => ({ value: point.period, label: capitalize(formatMonth(point.period)) })),
+);
+
+const monthModel = computed({
+  get: () => month.value ?? '',
+  set: (value: string) => openMonth(value),
+});
+
+/**
+ * Открыть месяц по дням и прокрутить к нему; пустая строка - закрыть.
+ * @param {string} period - месяц "2026-09".
+ */
+async function openMonth(period: string): Promise<void> {
+  opened.value = period ? { item: itemKey.value, month: period } : null;
+  if (!period) return;
+  await nextTick();
+  details.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 watch(
   () => [props.query, props.all] as const,
@@ -94,7 +161,18 @@ watch(
 <style lang="scss" module>
 .ItemPanel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
+}
+
+.monthSelect {
+  max-width: 18rem;
+  margin-top: var(--space-3);
+}
+
+// Прокрутка к месяцу - с отступом от края окна
+.details {
+  scroll-margin-top: var(--space-4);
 }
 
 .note {

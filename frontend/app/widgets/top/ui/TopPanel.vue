@@ -1,15 +1,46 @@
 <template>
   <div :class="$style.TopPanel">
-    <div :class="$style.controls">
-      <VSelect
-        v-model="field"
-        label="Что сравнивать"
-        :options="fieldOptions"
-        :disabled="!fieldOptions.length"
-      />
-      <VSelect v-model="size" label="Сколько строк" :options="sizeOptions" />
-      <VCheckbox v-model="worst" :class="$style.worst" label="Худшие вместо лучших" />
-    </div>
+    <VCard>
+      <div :class="$style.settings">
+        <div :class="$style.controls">
+          <VSelect
+            v-model="field"
+            label="Что сравнивать"
+            :options="fieldOptions"
+            :disabled="!fieldOptions.length"
+          />
+          <VSelect v-model="size" label="Сколько строк" :options="sizeOptions" />
+          <VCheckbox v-model="worst" :class="$style.worst" label="Худшие вместо лучших" />
+        </div>
+
+        <fieldset :class="$style.period">
+          <legend :class="$style.legend">Период</legend>
+          <div :class="$style.periods" role="group" aria-label="Быстрый выбор периода">
+            <VButton
+              v-for="value in Object.values(TOP_PERIODS)"
+              :key="value"
+              :variant="period === value ? BUTTON_VARIANTS.primary : BUTTON_VARIANTS.secondary"
+              :size="BUTTON_SIZES.small"
+              :aria-pressed="period === value"
+              @click="applyPeriod(value)"
+            >
+              {{ TOP_PERIOD_LABELS[value] }}
+            </VButton>
+          </div>
+          <VDateRange
+            :class="$style.range"
+            :model-value="{ from: dateFrom, to: dateTo }"
+            label="Свой период"
+            placeholder="За всё время"
+            :min="dataStart"
+            :max="dataEnd"
+            clearable
+            clear-label="За всё время"
+            @update:model-value="setRange"
+          />
+        </fieldset>
+      </div>
+    </VCard>
 
     <VSpinner v-if="isLoading && !data" label="Считаю топ..." show-label />
 
@@ -23,17 +54,25 @@
     </div>
 
     <VCard v-else-if="data" :title="title" :aria-busy="isLoading">
-      <p v-if="!data.rows.length" :class="$style.note">Нечего показать - продаж нет.</p>
+      <p :class="$style.summary">
+        {{ formatDate(data.date_from) }} - {{ formatDate(data.date_to) }} · вся выручка периода:
+        <strong>{{ formatMoney(data.total, data.currency) }}</strong>
+      </p>
+      <p v-if="!data.rows.length" :class="$style.note">За этот период продаж нет.</p>
 
       <template v-else>
         <VChart
           :option="chartOption"
-          :description="`${title}: столбцы - выручка, подписи - доля от всей выручки`"
-          :size="data.rows.length > CHART_SIZE_STEP ? CHART_SIZES.large : CHART_SIZES.medium"
+          :description="`${title}: доли в выручке периода, кольцом`"
+          :size="CHART_SIZES.large"
           :download-name="`топ-${data.by_label}`"
         />
-        <p v-if="data.rows.length > CHART_MAX_ROWS" :class="$style.note">
-          На графике - первые {{ CHART_MAX_ROWS }}, все строки - в таблице.
+        <p :class="$style.note">
+          Кольцо - вся выручка периода.
+          <template v-if="data.rows.length > CHART_MAX_ROWS">
+            Своим цветом - первые {{ CHART_MAX_ROWS }}, остальные строки - в таблице.
+          </template>
+          Серый сектор - всё, что не вошло в список.
         </p>
 
         <div :class="$style.tableWrap">
@@ -50,7 +89,14 @@
             <tbody>
               <tr v-for="(row, index) in data.rows" :key="row.name">
                 <td :class="$style._number">{{ index + 1 }}</td>
-                <td>
+                <td :class="$style.name">
+                  <!-- Цвет сектора на кольце: связывает строку таблицы с графиком -->
+                  <span
+                    v-if="index < CHART_MAX_ROWS"
+                    :class="$style.dot"
+                    :style="{ background: palette.categories[index % palette.categories.length] }"
+                    aria-hidden="true"
+                  />
                   <!-- Топ товаров: строка ведёт в карточку товара -->
                   <NuxtLink
                     v-if="data.by === ITEM_FIELD"
@@ -75,34 +121,59 @@
 
 <script setup lang="ts">
 /**
- * Топ: лучшие или худшие товары, категории, бренды - график и таблица.
+ * Топ: лучшие или худшие товары, категории, бренды за период - кольцо долей и таблица.
  * Параметры меняются - топ пересчитывается сам, без кнопки.
  */
 import { computed } from 'vue';
 import { NuxtLink } from '#components';
+import { useSession } from '~/entities/session';
 import { ROUTES } from '~/shared/config';
-import { capitalize, formatMoney, formatPercent } from '~/shared/lib';
+import { capitalize, formatDate, formatMoney, formatPercent } from '~/shared/lib';
 import {
   ALERT_VARIANTS,
+  BUTTON_SIZES,
   BUTTON_VARIANTS,
   CHART_SIZES,
+  readChartPalette,
   VAlert,
   VButton,
   VCard,
   VChart,
   VCheckbox,
+  VDateRange,
   VSelect,
   VSpinner,
 } from '~/shared/ui';
+import { TOP_PERIOD_LABELS, TOP_PERIODS } from '../lib/periods';
 import { CHART_MAX_ROWS, topChartOption } from '../lib/top-chart';
 import { useTop } from '../model/useTop';
 
-/** Больше строк - график выше, чтобы столбцы не сжимались в нитки. */
-const CHART_SIZE_STEP = 10;
 /** Поле «товар»: только у него есть карточка. */
 const ITEM_FIELD = 'object';
 
-const { field, size, worst, data, isLoading, error, fieldOptions, sizeOptions, reload } = useTop();
+const {
+  field,
+  size,
+  worst,
+  dateFrom,
+  dateTo,
+  period,
+  data,
+  isLoading,
+  error,
+  fieldOptions,
+  sizeOptions,
+  setRange,
+  applyPeriod,
+  reload,
+} = useTop();
+
+const session = useSession();
+const dataStart = session.state.value.prepared?.date_from;
+const dataEnd = session.state.value.prepared?.date_to;
+
+// Цвета из CSS-токенов: одни и те же у секторов кольца и у точек в таблице
+const palette = readChartPalette();
 
 const title = computed(() => {
   if (!data.value) return '';
@@ -110,7 +181,12 @@ const title = computed(() => {
 });
 
 const chartOption = computed(() =>
-  data.value ? topChartOption(data.value.rows, data.value.currency) : {},
+  data.value
+    ? topChartOption(
+        { rows: data.value.rows, total: data.value.total, currency: data.value.currency },
+        palette,
+      )
+    : {},
 );
 </script>
 
@@ -120,11 +196,64 @@ const chartOption = computed(() =>
   gap: var(--space-5);
 }
 
+.settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); // колонка - по ширине карточки, а не по содержимому
+  gap: var(--space-4);
+}
+
 .controls {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: var(--space-4);
   align-items: end;
+}
+
+.period {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  color: var(--base-700);
+
+  @include text(small);
+}
+
+.periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.range {
+  max-width: 18rem;
+}
+
+.summary {
+  margin-bottom: var(--space-3);
+  color: var(--base-700);
+
+  @include text(small);
+}
+
+.name {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
 }
 
 // Флажок - на одной линии с полями выбора, а не с их подписями

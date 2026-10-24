@@ -1,56 +1,105 @@
-// Рецепт графика топа: горизонтальные столбцы, первый - сверху, на столбце - доля «27,5 %»
+// Рецепт графика топа: кольцо долей в выручке периода. Первые строки - своими секторами,
+// всё прочее - серым сектором «Остальное», чтобы кольцо было честным: 100 % = вся выручка
 import type { DeepReadonly } from 'vue';
 import type { TopRow } from '~/shared/api';
 import { formatMoney, formatPercent } from '~/shared/lib';
-import type { ChartOption } from '~/shared/ui';
+import type { ChartOption, ChartPalette } from '~/shared/ui';
 
-/** Больше столбцов - подписи слипаются; все строки всё равно есть в таблице. */
-export const CHART_MAX_ROWS = 15;
+/** Больше секторов - тонкие полоски не различить; все строки всё равно есть в таблице. */
+export const CHART_MAX_ROWS = 8;
 
-// На столбце - только доля: подпись с суммой съедала полэкрана телефона.
-// Сумма - в подсказке и в таблице под графиком
-const LABEL_SPACE = 56; // место справа под «27,5 %»
-const NAME_WIDTH = 110; // длинные названия обрезаются, целиком - в подсказке
-const BAR_MAX_WIDTH = 28;
-const TOOLBOX_SPACE = 32; // сверху - кнопка «скачать PNG», столбцы под ней
+const REST_NAME = 'Остальное';
+const RING_RADIUS = ['42%', '68%']; // кольцо, а не круг: так доли легче сравнивать глазом
+const RING_CENTER = ['50%', '44%']; // чуть выше середины: снизу - легенда
+const GAP_WIDTH = 2; // зазор между секторами - цвета фона
+const MIN_LABEL_PERCENT = 4;
+const LABEL_FONT_SIZE = 11; // у совсем узких секторов подписи нет - они бы наползали
+
+interface Slice {
+  name: string;
+  value: number;
+  share: number;
+}
+
+interface TooltipParams {
+  name: string;
+  value: number;
+  data: Slice;
+}
 
 /**
- * Настройки ECharts для топа.
- * @param {DeepReadonly<TopRow[]>} rows - строки топа в порядке сервера.
- * @param {string} currency - как подписывать суммы.
+ * Секторы: первые строки топа и «Остальное» - разница до всей выручки периода.
+ * @param {DeepReadonly<TopRow[]>} rows - строки топа.
+ * @param {number} total - вся выручка периода.
+ * @returns {Slice[]} секторы кольца.
+ */
+export function topSlices(rows: DeepReadonly<TopRow[]>, total: number): Slice[] {
+  const shown = rows.slice(0, CHART_MAX_ROWS).map(row => ({
+    name: row.name,
+    value: row.value,
+    share: row.share_percent,
+  }));
+  const rest = total - shown.reduce((sum, slice) => sum + slice.value, 0);
+  // Копейки от округления - не «остальное»
+  if (total > 0 && rest / total >= 0.001) {
+    shown.push({ name: REST_NAME, value: rest, share: (rest / total) * 100 });
+  }
+  return shown;
+}
+
+/**
+ * Настройки ECharts для кольца топа.
+ * @param {object} data - данные.
+ * @param {DeepReadonly<TopRow[]>} data.rows - строки топа.
+ * @param {number} data.total - вся выручка периода.
+ * @param {string} data.currency - валюта.
+ * @param {ChartPalette} palette - цвета (readChartPalette).
  * @returns {ChartOption} настройки для VChart.
  */
-export function topChartOption(rows: DeepReadonly<TopRow[]>, currency: string): ChartOption {
-  const shown = rows.slice(0, CHART_MAX_ROWS).reverse(); // ECharts рисует снизу вверх
+export function topChartOption(
+  data: { rows: DeepReadonly<TopRow[]>; total: number; currency: string },
+  palette: ChartPalette,
+): ChartOption {
+  const slices = topSlices(data.rows, data.total);
   return {
-    legend: { show: false }, // ряд один - легенда ничего не объясняет
-    grid: { right: LABEL_SPACE, top: TOOLBOX_SPACE },
     tooltip: {
       trigger: 'item',
-      formatter: ({ dataIndex }: { dataIndex: number }) => {
-        const row = shown[dataIndex];
-        return `${row.name}<br>${formatMoney(row.value, currency)} · ${formatPercent(row.share_percent, false)}`;
-      },
+      formatter: ({ name, value, data: slice }: TooltipParams) =>
+        `${name}<br>${formatMoney(value, data.currency)} · ${formatPercent(slice.share, false)}`,
     },
-    // Шкала не нужна: длину столбца видно, а точные цифры - в подписях и таблице
-    xAxis: { type: 'value', axisLabel: { show: false }, splitLine: { show: false } },
-    yAxis: {
-      type: 'category',
-      data: shown.map(row => row.name),
-      axisLabel: { width: NAME_WIDTH, overflow: 'truncate' },
-    },
+    legend: { type: 'scroll', top: 'auto', bottom: 0, left: 'center' },
+    // Общий вид графиков (VChart) задаёт оси - у кольца их нет, прячем
+    xAxis: { show: false },
+    yAxis: { show: false },
     series: [
       {
-        name: 'Выручка',
-        type: 'bar',
-        barMaxWidth: BAR_MAX_WIDTH,
-        data: shown.map(row => row.value),
+        name: 'Доля в выручке',
+        type: 'pie',
+        radius: RING_RADIUS,
+        center: RING_CENTER,
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: palette.gap, borderWidth: GAP_WIDTH },
+        // Проценты - внутри секторов: снаружи на узком экране они обрезаются краем графика
         label: {
-          show: true,
-          position: 'right',
-          formatter: ({ dataIndex }: { dataIndex: number }) =>
-            formatPercent(shown[dataIndex].share_percent, false),
+          position: 'inside',
+          fontSize: LABEL_FONT_SIZE,
+          fontWeight: 600,
+          color: palette.gap,
+          formatter: ({ data: slice }: { data: Slice }) =>
+            slice.share >= MIN_LABEL_PERCENT ? formatPercent(slice.share, false) : '',
         },
+        labelLine: { show: false },
+        data: slices.map((slice, index) => {
+          const isRest = slice.name === REST_NAME;
+          return {
+            ...slice,
+            itemStyle: {
+              color: isRest ? palette.rest : palette.categories[index % palette.categories.length],
+            },
+            // «Остальное» светло-серое - белый текст на нём не прочитать
+            ...(isRest ? { label: { color: palette.text } } : {}),
+          };
+        }),
       },
     ],
   };

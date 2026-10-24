@@ -160,6 +160,15 @@ class Overview(BaseModel):
     )
 
 
+class Daily(BaseModel):
+    # Выручка по дням периода - для таблицы «месяц по дням»
+    currency: str
+    date_from: date
+    date_to: date
+    total: float = Field(description="Выручка за весь период")
+    days: list[SeriesPoint] = Field(description="Каждый день периода; без продаж - 0")
+
+
 # ---------- анализ: топ ----------
 
 
@@ -174,6 +183,9 @@ class Top(BaseModel):
     by_label: str = Field(examples=["товар или услуга"])
     worst: bool = Field(description="true - худшие, false - лучшие")
     currency: str
+    date_from: date = Field(description="Период топа: с (если не задан - начало данных)")
+    date_to: date = Field(description="Период топа: по, включительно")
+    total: float = Field(description="Вся выручка за период - от неё считается доля")
     available: list[Choice] = Field(description="По каким полям можно строить топ")
     rows: list[TopRow]
 
@@ -209,6 +221,28 @@ class ItemDetail(BaseModel):
     )
 
 
+class ItemDay(BaseModel):
+    # День продаж товара - строка таблицы «месяц товара»
+    period: str = Field(examples=["2026-09-15"])
+    amount: float = Field(description="Выручка товара за день")
+    quantity: float | None = Field(description="Продано штук; нет - если количества нет в данных")
+    executors: list[str] = Field(
+        description="Кто продавал - от продавшего больше; пусто, если сотрудника нет в данных"
+    )
+
+
+class ItemDays(BaseModel):
+    # Товар по дням периода
+    name: str
+    currency: str
+    date_from: date
+    date_to: date
+    total: float = Field(description="Выручка товара за период")
+    quantity: float | None = Field(description="Продано штук за период")
+    has_executors: bool = Field(description="Есть ли в данных сотрудники - показывать ли колонку")
+    days: list[ItemDay] = Field(description="Каждый день периода; без продаж - нули")
+
+
 # ---------- анализ: сравнение периодов ----------
 
 
@@ -218,6 +252,15 @@ class PeriodTotal(BaseModel):
     days: int = Field(description="Дней в периоде, включая оба края")
     value: float = Field(description="Выручка за период")
     per_day: float = Field(description="В среднем за день")
+
+
+class CompareRow(BaseModel):
+    # Товар в сравнении: было, стало и разница
+    name: str = Field(examples=["Пиво Лидское 0.5"])
+    first: float = Field(description="Выручка в первом периоде (было)")
+    second: float = Field(description="Выручка во втором периоде (стало)")
+    change: float = Field(description="Стало минус было")
+    change_percent: float | None = Field(description="Изменение в %; нет - если было 0")
 
 
 class Comparison(BaseModel):
@@ -231,6 +274,13 @@ class Comparison(BaseModel):
     )
     warnings: list[str] = Field(
         description="Например: период выходит за пределы данных - сравнение может быть неверным"
+    )
+    by_label: str | None = Field(
+        default=None, description="По чему разбивка rows; нет - товара в данных нет"
+    )
+    rows: list[CompareRow] = Field(
+        default_factory=list,
+        description="Было и стало по товарам: самые заметные, с наибольшей выручкой",
     )
 
 

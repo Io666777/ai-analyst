@@ -18,6 +18,44 @@ const CHART_TOKENS = {
 
 export type ChartColors = Record<keyof typeof CHART_TOKENS, string>;
 
+/** Цвета категорий: секторы круговой диаграммы и группы столбцов. */
+const PALETTE_TOKENS = [
+  '--chart-1',
+  '--chart-2',
+  '--chart-3',
+  '--chart-4',
+  '--chart-5',
+  '--chart-6',
+  '--chart-7',
+  '--chart-8',
+] as const;
+
+export interface ChartPalette {
+  /** Цвета категорий по порядку. */
+  categories: string[];
+  /** «Остальное» - нейтральный, чтобы не спорил с категориями. */
+  rest: string;
+  /** Зазор между секторами и столбцами - цвет фона; он же - текст на цветном секторе. */
+  gap: string;
+  /** Тёмный текст - на светлом секторе. */
+  text: string;
+}
+
+/**
+ * Палитра категорий из CSS-переменных страницы.
+ * @returns {ChartPalette} цвета категорий, «остального» и зазоров.
+ */
+export function readChartPalette(): ChartPalette {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (token: string) => styles.getPropertyValue(token).trim();
+  return {
+    categories: PALETTE_TOKENS.map(read),
+    rest: read('--base-300'),
+    gap: read('--white'),
+    text: read('--base-900'),
+  };
+}
+
 const FONT_SIZE = { axis: 12, tooltip: 13 } as const;
 const ZOOM_SLIDER_HEIGHT = 20;
 

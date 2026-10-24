@@ -3,7 +3,7 @@
 import pandas as pd
 
 from app.analytics.compare import last_full_month_vs_previous
-from app.analytics.periods import by_period
+from app.analytics.periods import between, by_period
 from app.data import available_fields, extra_fields, numeric_fields, require_field
 
 
@@ -52,6 +52,39 @@ def find_item(events: pd.DataFrame, query: str) -> str:
     return found[0]
 
 
+def item_names(events: pd.DataFrame, query: str, all_matches: bool = False) -> list[str]:
+    # Какие товары смотрим: ровно один по запросу или все подходящие ("всё пиво сразу")
+    if not all_matches:
+        return [find_item(events, query)]
+    items = find_items(events, query)
+    if not items:
+        raise ValueError(f"Не найдено ничего похожего на «{query}»")
+    return items
+
+
+def item_days(events: pd.DataFrame, items: list[str], start: str, end: str) -> pd.DataFrame:
+    # Продажи товаров по дням периода: выручка, штуки и кто продавал (если такие поля есть).
+    # День без продаж - строка с нулями: в таблице месяца провал должен быть виден
+    fields = available_fields(events)
+    sales = between(events[events["object"].isin(items)], start, end)
+    days = pd.date_range(start, end, freq="D")
+    by_day = sales.groupby(sales["date"].dt.normalize())
+
+    result = pd.DataFrame(index=days)
+    for value in ("amount", "quantity"):
+        if value in fields:
+            result[value] = by_day[value].sum().reindex(days, fill_value=0)
+    if "executor" in fields:
+        # Сотрудники дня - от продавшего больше к меньшему
+        def sellers(day: pd.DataFrame) -> list[str]:
+            totals = day.groupby("executor")["amount"].sum().sort_values(ascending=False)
+            return [str(name) for name in totals.index]
+
+        names = {day: sellers(group) for day, group in by_day}
+        result["executors"] = [names.get(day, []) for day in days]
+    return result
+
+
 def item_detail(
     events: pd.DataFrame,
     query: str,
@@ -61,12 +94,7 @@ def item_detail(
     # Всё о товаре: итоги, доля в выручке, даты продаж, динамика, последний месяц.
     # all_matches=True - все подходящие товары вместе ("всё пиво сразу")
     fields = available_fields(events)
-    if all_matches:
-        items = find_items(events, query)
-        if not items:
-            raise ValueError(f"Не найдено ничего похожего на «{query}»")
-    else:
-        items = [find_item(events, query)]
+    items = item_names(events, query, all_matches)
     sales = events[events["object"].isin(items)]  # только продажи этих товаров
 
     detail = {

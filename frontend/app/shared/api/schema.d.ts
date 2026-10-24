@@ -165,6 +165,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Выручка по дням периода
+         * @description Каждый день периода, дни без продаж - нулём. Для таблички «месяц по дням» в обзоре.
+         */
+        get: operations["daily_api_analysis_daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/top": {
         parameters: {
             query?: never;
@@ -174,7 +194,8 @@ export interface paths {
         };
         /**
          * Топ: лучшие или худшие товары, категории, бренды
-         * @description Выручка по выбранному полю и доля от всей выручки (а не только от топа).
+         * @description Выручка по выбранному полю за период и доля от всей выручки периода
+         *     (а не только от топа).
          */
         get: operations["top_api_analysis_top_get"];
         put?: never;
@@ -197,6 +218,26 @@ export interface paths {
          * @description Ищет по точному названию, затем по артикулу и другим признакам, затем по части названия.
          */
         get: operations["search_items_api_analysis_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/item/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Товар по дням периода
+         * @description Выручка, штуки и кто продавал - за каждый день периода. Для таблицы «месяц товара».
+         */
+        get: operations["item_by_days_api_analysis_item_days_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -352,6 +393,34 @@ export interface components {
              */
             examples: string[];
         };
+        /** CompareRow */
+        CompareRow: {
+            /**
+             * Name
+             * @example Пиво Лидское 0.5
+             */
+            name: string;
+            /**
+             * First
+             * @description Выручка в первом периоде (было)
+             */
+            first: number;
+            /**
+             * Second
+             * @description Выручка во втором периоде (стало)
+             */
+            second: number;
+            /**
+             * Change
+             * @description Стало минус было
+             */
+            change: number;
+            /**
+             * Change Percent
+             * @description Изменение в %; нет - если было 0
+             */
+            change_percent: number | null;
+        };
         /** Comparison */
         Comparison: {
             /** Currency */
@@ -380,6 +449,41 @@ export interface components {
              * @description Например: период выходит за пределы данных - сравнение может быть неверным
              */
             warnings: string[];
+            /**
+             * By Label
+             * @description По чему разбивка rows; нет - товара в данных нет
+             */
+            by_label?: string | null;
+            /**
+             * Rows
+             * @description Было и стало по товарам: самые заметные, с наибольшей выручкой
+             */
+            rows?: components["schemas"]["CompareRow"][];
+        };
+        /** Daily */
+        Daily: {
+            /** Currency */
+            currency: string;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Total
+             * @description Выручка за весь период
+             */
+            total: number;
+            /**
+             * Days
+             * @description Каждый день периода; без продаж - 0
+             */
+            days: components["schemas"]["SeriesPoint"][];
         };
         /** Estimate */
         Estimate: {
@@ -540,6 +644,66 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ItemDay */
+        ItemDay: {
+            /**
+             * Period
+             * @example 2026-09-15
+             */
+            period: string;
+            /**
+             * Amount
+             * @description Выручка товара за день
+             */
+            amount: number;
+            /**
+             * Quantity
+             * @description Продано штук; нет - если количества нет в данных
+             */
+            quantity: number | null;
+            /**
+             * Executors
+             * @description Кто продавал - от продавшего больше; пусто, если сотрудника нет в данных
+             */
+            executors: string[];
+        };
+        /** ItemDays */
+        ItemDays: {
+            /** Name */
+            name: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Total
+             * @description Выручка товара за период
+             */
+            total: number;
+            /**
+             * Quantity
+             * @description Продано штук за период
+             */
+            quantity: number | null;
+            /**
+             * Has Executors
+             * @description Есть ли в данных сотрудники - показывать ли колонку
+             */
+            has_executors: boolean;
+            /**
+             * Days
+             * @description Каждый день периода; без продаж - нули
+             */
+            days: components["schemas"]["ItemDay"][];
         };
         /** ItemDetail */
         ItemDetail: {
@@ -901,6 +1065,23 @@ export interface components {
             /** Currency */
             currency: string;
             /**
+             * Date From
+             * Format: date
+             * @description Период топа: с (если не задан - начало данных)
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             * @description Период топа: по, включительно
+             */
+            date_to: string;
+            /**
+             * Total
+             * @description Вся выручка за период - от неё считается доля
+             */
+            total: number;
+            /**
              * Available
              * @description По каким полям можно строить топ
              */
@@ -1180,6 +1361,43 @@ export interface operations {
             };
         };
     };
+    daily_api_analysis_daily_get: {
+        parameters: {
+            query: {
+                /** @description С какого дня */
+                date_from: string;
+                /** @description По какой день, включительно */
+                date_to: string;
+            };
+            header: {
+                /** @description Номер сессии, который вернула загрузка файла */
+                "x-session-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Daily"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     top_api_analysis_top_get: {
         parameters: {
             query?: {
@@ -1189,6 +1407,10 @@ export interface operations {
                 top?: number;
                 /** @description true - худшие вместо лучших */
                 worst?: boolean;
+                /** @description С какого дня; нет - с начала */
+                date_from?: string | null;
+                /** @description По какой день; нет - до конца */
+                date_to?: string | null;
             };
             header: {
                 /** @description Номер сессии, который вернула загрузка файла */
@@ -1241,6 +1463,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemsFound"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_by_days_api_analysis_item_days_get: {
+        parameters: {
+            query: {
+                /** @description Название, его часть или артикул */
+                q: string;
+                /** @description С какого дня */
+                date_from: string;
+                /** @description По какой день, включительно */
+                date_to: string;
+                /** @description true - все подходящие товары вместе */
+                all?: boolean;
+            };
+            header: {
+                /** @description Номер сессии, который вернула загрузка файла */
+                "x-session-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemDays"];
                 };
             };
             /** @description Validation Error */

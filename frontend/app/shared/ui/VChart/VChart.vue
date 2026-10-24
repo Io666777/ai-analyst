@@ -40,13 +40,24 @@ const props = withDefaults(
     zoomable?: boolean;
     /** Имя файла для кнопки «скачать PNG»; не задано - кнопки нет. */
     downloadName?: string;
+    /**
+     * Можно выбрать точку кликом: событие select с номером. У линий и столбцов клик
+     * засчитывается по всей колонке (по точке на линии попасть трудно), у кольца - по сектору.
+     */
+    selectable?: boolean;
   }>(),
   {
     size: CHART_SIZES.medium,
     zoomable: false,
     downloadName: undefined,
+    selectable: false,
   },
 );
+
+const emit = defineEmits<{
+  /** Выбрана точка (selectable): номер в данных - колонка оси или сектор. */
+  select: [index: number];
+}>();
 
 const style = useCssModule();
 const container = useTemplateRef<HTMLDivElement>('container');
@@ -70,6 +81,32 @@ function render(): void {
   chart.value.setOption(props.option);
 }
 
+/**
+ * Клики для выбора точки: по сектору кольца - сам сектор, по области с осями - колонка под курсором.
+ * @param {ECharts} instance - график.
+ */
+function listenSelect(instance: ECharts): void {
+  // У кольца нет колонок: выбор - только клик по сектору
+  const isPie = () =>
+    (instance.getOption().series as { type?: string }[] | undefined)?.[0]?.type === 'pie';
+
+  instance.on('click', params => {
+    if (params.componentSubType === 'pie') emit('select', params.dataIndex);
+  });
+  instance.getZr().on('click', ({ offsetX, offsetY }) => {
+    const point = [offsetX, offsetY];
+    if (isPie() || !instance.containPixel('grid', point)) return; // мимо осей: легенда, кнопки
+    const [index] = instance.convertFromPixel({ gridIndex: 0 }, point) as number[];
+    if (Number.isFinite(index)) emit('select', Math.round(index));
+  });
+  // Курсор-рука над областью с осями: видно, что сюда можно нажать
+  instance.getZr().on('mousemove', ({ offsetX, offsetY }) => {
+    if (isPie()) return; // над сектором рука и так появляется сама
+    const inside = instance.containPixel('grid', [offsetX, offsetY]);
+    instance.getZr().setCursorStyle(inside ? 'pointer' : 'default');
+  });
+}
+
 onMounted(async () => {
   // Ленивая загрузка: код ECharts скачивается только сейчас, когда график появился
   const { echarts, ECHARTS_LOCALE } = await import('./echarts');
@@ -77,6 +114,7 @@ onMounted(async () => {
 
   chart.value = echarts.init(container.value, null, { locale: ECHARTS_LOCALE });
   render();
+  if (props.selectable) listenSelect(chart.value);
   resizeObserver = new ResizeObserver(() => chart.value?.resize());
   resizeObserver.observe(container.value);
 });

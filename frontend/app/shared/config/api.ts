@@ -21,9 +21,11 @@ export const API_ENDPOINTS = {
   mapping: '/session/mapping',
   settings: '/session/settings',
   overview: '/analysis/overview',
+  daily: '/analysis/daily',
   top: '/analysis/top',
   items: '/analysis/items',
   item: '/analysis/item',
+  itemDays: '/analysis/item/days',
   compare: '/analysis/compare',
   forecast: '/analysis/forecast',
 } as const;

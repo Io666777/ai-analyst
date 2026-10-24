@@ -28,6 +28,15 @@ def shop() -> dict[str, str]:
 
 
 @pytest.fixture
+def salon() -> dict[str, str]:
+    # Тестовый салон: год данных, есть мастера (сотрудники)
+    body = client.post("/api/examples/salon.xlsx").json()
+    headers = {"X-Session-Id": body["session_id"]}
+    client.put("/api/session/mapping", json={"mapping": body["mapping"]}, headers=headers)
+    return headers
+
+
+@pytest.fixture
 def short_history() -> dict[str, str]:
     # Данные с 10 января по 10 марта: полный только февраль
     rows = ["10.01.2026;100", "20.01.2026;50", "05.02.2026;70", "28.02.2026;30", "10.03.2026;40"]
@@ -121,6 +130,141 @@ def test_top_wrong_field(shop, by):
     response = client.get("/api/analysis/top", params={"by": by}, headers=shop)
     assert response.status_code == 400
     assert "Можно по" in response.json()["detail"]
+
+
+def test_top_for_period(shop):
+    # Топ за сентябрь 2026: доля - от выручки сентября, итог - как в сравнении за тот же месяц
+    params = {"date_from": "2026-09-01", "date_to": "2026-09-30"}
+    body = client.get("/api/analysis/top", params=params, headers=shop).json()
+    month = client.get(
+        "/api/analysis/compare",
+        params={
+            "first_from": "2026-08-01",
+            "first_to": "2026-08-31",
+            "second_from": "2026-09-01",
+            "second_to": "2026-09-30",
+        },
+        headers=shop,
+    ).json()
+    assert body["date_from"] == "2026-09-01"
+    assert body["total"] == pytest.approx(month["second"]["value"], abs=0.01)
+    leader = body["rows"][0]
+    assert leader["share_percent"] == pytest.approx(leader["value"] / body["total"] * 100, abs=0.1)
+
+
+def test_top_period_defaults_to_all_data(shop):
+    body = client.get("/api/analysis/top", headers=shop).json()
+    overview = client.get("/api/analysis/overview", headers=shop).json()
+    assert (body["date_from"], body["date_to"]) == (overview["date_from"], overview["date_to"])
+    assert body["total"] == pytest.approx(overview["total"], abs=0.01)
+
+
+def test_top_period_reversed(shop):
+    params = {"date_from": "2026-09-30", "date_to": "2026-09-01"}
+    response = client.get("/api/analysis/top", params=params, headers=shop)
+    assert response.status_code == 400
+    assert "позже конца" in response.json()["detail"]
+
+
+def test_daily_month(shop):
+    # Сентябрь 2026 по дням: 30 дней подряд, сумма - как итог месяца в сравнении
+    params = {"date_from": "2026-09-01", "date_to": "2026-09-30"}
+    body = client.get("/api/analysis/daily", params=params, headers=shop).json()
+    top = client.get("/api/analysis/top", params=params, headers=shop).json()
+    assert len(body["days"]) == 30
+    assert body["days"][0]["period"] == "2026-09-01"
+    assert body["days"][-1]["period"] == "2026-09-30"
+    assert body["total"] == pytest.approx(top["total"], abs=0.01)
+
+
+def test_daily_keeps_days_without_sales(shop):
+    # За пределами данных продаж нет - но дни есть, с нулями
+    params = {"date_from": "2026-09-29", "date_to": "2026-10-02"}
+    body = client.get("/api/analysis/daily", params=params, headers=shop).json()
+    assert [day["period"] for day in body["days"]] == [
+        "2026-09-29",
+        "2026-09-30",
+        "2026-10-01",
+        "2026-10-02",
+    ]
+    assert body["days"][-1]["value"] == 0
+
+
+def test_daily_limits(shop):
+    reversed_period = {"date_from": "2026-09-30", "date_to": "2026-09-01"}
+    too_long = {"date_from": "2024-01-01", "date_to": "2026-01-01"}
+    for params in (reversed_period, too_long):
+        response = client.get("/api/analysis/daily", params=params, headers=shop)
+        assert response.status_code == 400
+
+
+def test_item_days(shop):
+    # Пиво Лидское за сентябрь по дням: 30 строк, сумма - как у товара в топе за сентябрь
+    month = {"date_from": "2026-09-01", "date_to": "2026-09-30"}
+    body = client.get(
+        "/api/analysis/item/days", params={"q": "лидское", **month}, headers=shop
+    ).json()
+    top = client.get("/api/analysis/top", params=month, headers=shop).json()
+    in_top = next(row for row in top["rows"] if row["name"] == "Пиво Лидское 0.5")
+
+    assert body["name"] == "Пиво Лидское 0.5"
+    assert len(body["days"]) == 30
+    assert body["total"] == pytest.approx(in_top["value"], abs=0.01)
+    assert body["quantity"] > 0  # в магазине количество размечено
+    assert body["has_executors"] is False  # а сотрудника нет
+    assert body["days"][0]["executors"] == []
+
+
+def test_item_days_with_executors(salon):
+    # В салоне есть мастера: у дней с продажами - кто делал услугу
+    params = {"q": "Маникюр", "date_from": "2026-01-01", "date_to": "2026-01-31"}
+    body = client.get("/api/analysis/item/days", params=params, headers=salon).json()
+    assert body["has_executors"] is True
+    busy = [day for day in body["days"] if day["amount"] > 0]
+    assert busy and all(day["executors"] for day in busy)
+
+
+def test_item_days_errors(shop):
+    month = {"date_from": "2026-09-01", "date_to": "2026-09-30"}
+    url = "/api/analysis/item/days"
+    assert client.get(url, params={"q": "ананас", **month}, headers=shop).status_code == 404
+    assert client.get(url, params={"q": "пиво", **month}, headers=shop).status_code == 400
+    together = client.get(url, params={"q": "пиво", "all": True, **month}, headers=shop)
+    assert together.status_code == 200
+    assert together.json()["name"] == "пиво (позиций: 3)"
+
+
+def test_compare_rows_by_item(shop):
+    # Август и сентябрь по товарам: суммы сходятся с итогами периодов, порядок - по заметности
+    params = {
+        "first_from": "2026-08-01",
+        "first_to": "2026-08-31",
+        "second_from": "2026-09-01",
+        "second_to": "2026-09-30",
+    }
+    body = client.get("/api/analysis/compare", params=params, headers=shop).json()
+    rows = body["rows"]
+    assert body["by_label"] == "товар или услуга"
+    assert len(rows) == 7  # в магазине 7 товаров - все попали
+    assert sum(row["first"] for row in rows) == pytest.approx(body["first"]["value"], abs=0.1)
+    assert sum(row["second"] for row in rows) == pytest.approx(body["second"]["value"], abs=0.1)
+    biggest = [max(row["first"], row["second"]) for row in rows]
+    assert biggest == sorted(biggest, reverse=True)
+    leader = rows[0]
+    assert leader["change"] == pytest.approx(leader["second"] - leader["first"], abs=0.01)
+
+
+def test_compare_without_items(short_history):
+    # В данных без товара разбивки нет - а сравнение итогов работает как раньше
+    params = {
+        "first_from": "2026-01-01",
+        "first_to": "2026-01-31",
+        "second_from": "2026-02-01",
+        "second_to": "2026-02-28",
+    }
+    body = client.get("/api/analysis/compare", params=params, headers=short_history).json()
+    assert body["rows"] == []
+    assert body["by_label"] is None
 
 
 def test_top_size_limits(shop):

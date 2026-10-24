@@ -7,22 +7,31 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.analytics import (
+    between,
     breakdown,
     by_period,
+    compare_breakdown,
     compare_periods,
+    daily_totals,
     find_items,
     incomplete_periods,
+    item_days,
     item_detail,
+    item_names,
     last_full_month_vs_previous,
 )
 from app.api.dependencies import PreparedSession
 from app.api.schemas import (
     Accuracy,
     Choice,
+    CompareRow,
     Comparison,
+    Daily,
     Estimate,
     Forecast,
     ForecastPoint,
+    ItemDay,
+    ItemDays,
     ItemDetail,
     ItemsFound,
     MonthSummary,
@@ -104,6 +113,31 @@ def overview(session: PreparedSession) -> Overview:
     )
 
 
+MAX_DAILY_DAYS = 366  # по дням - не больше года: длиннее таблица уже не читается
+
+
+@router.get("/daily", summary="Выручка по дням периода")
+def daily(
+    session: PreparedSession,
+    date_from: Annotated[date, Query(description="С какого дня")],
+    date_to: Annotated[date, Query(description="По какой день, включительно")],
+) -> Daily:
+    """Каждый день периода, дни без продаж - нулём. Для таблички «месяц по дням» в обзоре."""
+    check_period(date_from, date_to)
+    if (date_to - date_from).days >= MAX_DAILY_DAYS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"По дням - не больше {MAX_DAILY_DAYS} дней"
+        )
+    totals = daily_totals(session.events, date_from.isoformat(), date_to.isoformat())
+    return Daily(
+        currency=session.currency,
+        date_from=date_from,
+        date_to=date_to,
+        total=round(float(totals.sum()), 2),
+        days=to_points(totals, DAY_FORMAT),
+    )
+
+
 def groupable_fields(events: pd.DataFrame) -> list[Choice]:
     # По чему можно строить топ: текстовые поля, кроме даты, цены и номера чека.
     # Подпись - описание основного поля или название дополнительного ("Бренд")
@@ -115,14 +149,27 @@ def groupable_fields(events: pd.DataFrame) -> list[Choice]:
     ]
 
 
+def check_period(start: date | None, end: date | None) -> None:
+    # Начало позже конца - понятная ошибка, а не пустой результат
+    if start and end and start > end:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Начало периода ({start:%d.%m.%Y}) позже конца ({end:%d.%m.%Y})",
+        )
+
+
 @router.get("/top", summary="Топ: лучшие или худшие товары, категории, бренды")
 def top(
     session: PreparedSession,
     by: Annotated[str, Query(description="Поле из списка available")] = "object",
     top: Annotated[int, Query(ge=1, le=MAX_TOP, description="Сколько строк")] = 10,
     worst: Annotated[bool, Query(description="true - худшие вместо лучших")] = False,
+    date_from: Annotated[date | None, Query(description="С какого дня; нет - с начала")] = None,
+    date_to: Annotated[date | None, Query(description="По какой день; нет - до конца")] = None,
 ) -> Top:
-    """Выручка по выбранному полю и доля от всей выручки (а не только от топа)."""
+    """Выручка по выбранному полю за период и доля от всей выручки периода
+    (а не только от топа)."""
+    check_period(date_from, date_to)
     available = groupable_fields(session.events)
     labels = {choice.value: choice.label for choice in available}
     if by not in labels:
@@ -130,12 +177,20 @@ def top(
             status.HTTP_400_BAD_REQUEST,
             f"Топ по «{by}» не построить. Можно по: {', '.join(labels)}",
         )
-    table = breakdown(session.events, by=by, top=top, worst=worst)
+    events = between(
+        session.events,
+        date_from.isoformat() if date_from else None,
+        date_to.isoformat() if date_to else None,
+    )
+    table = breakdown(events, by=by, top=top, worst=worst)
     return Top(
         by=by,
         by_label=labels[by],
         worst=worst,
         currency=session.currency,
+        date_from=date_from or session.events["date"].min().date(),
+        date_to=date_to or session.events["date"].max().date(),
+        total=round(float(events["amount"].sum()), 2),
         available=available,
         rows=[
             TopRow(name=str(name), value=float(row["amount"]), share_percent=float(row["доля_%"]))
@@ -151,6 +206,59 @@ def search_items(session: PreparedSession, q: ItemQuery) -> ItemsFound:
     return ItemsFound(query=q, items=found[:MAX_SUGGESTIONS], total=len(found))
 
 
+def check_items(events: pd.DataFrame, query: str, all_matches: bool) -> list[str]:
+    # Товары по запросу - или понятная ошибка: не нашлось (404), подходит несколько (400)
+    found = find_items(events, query)
+    if not found:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Не найдено ничего похожего на «{query}»")
+    if len(found) > 1 and not all_matches:
+        names = ", ".join(found[:MAX_SUGGESTIONS])
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Под «{query}» подходит несколько: {names}. Уточните"
+        )
+    return item_names(events, query, all_matches)
+
+
+@router.get("/item/days", summary="Товар по дням периода")
+def item_by_days(
+    session: PreparedSession,
+    q: ItemQuery,
+    date_from: Annotated[date, Query(description="С какого дня")],
+    date_to: Annotated[date, Query(description="По какой день, включительно")],
+    all_matches: Annotated[
+        bool, Query(alias="all", description="true - все подходящие товары вместе")
+    ] = False,
+) -> ItemDays:
+    """Выручка, штуки и кто продавал - за каждый день периода. Для таблицы «месяц товара»."""
+    check_period(date_from, date_to)
+    if (date_to - date_from).days >= MAX_DAILY_DAYS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"По дням - не больше {MAX_DAILY_DAYS} дней"
+        )
+    items = check_items(session.events, q, all_matches)
+    table = item_days(session.events, items, date_from.isoformat(), date_to.isoformat())
+    has_quantity = "quantity" in table
+    has_executors = "executors" in table
+    return ItemDays(
+        name=items[0] if len(items) == 1 else f"{q} (позиций: {len(items)})",
+        currency=session.currency,
+        date_from=date_from,
+        date_to=date_to,
+        total=round(float(table["amount"].sum()), 2),
+        quantity=float(table["quantity"].sum()) if has_quantity else None,
+        has_executors=has_executors,
+        days=[
+            ItemDay(
+                period=f"{day:{DAY_FORMAT}}",
+                amount=round(float(row["amount"]), 2),
+                quantity=float(row["quantity"]) if has_quantity else None,
+                executors=row["executors"] if has_executors else [],
+            )
+            for day, row in table.iterrows()
+        ],
+    )
+
+
 @router.get("/item", summary="Товар: всё о нём")
 def item(
     session: PreparedSession,
@@ -162,15 +270,7 @@ def item(
 ) -> ItemDetail:
     """Выручка, доля, количество, даты продаж, динамика по месяцам и последний месяц.
     Подходит несколько товаров, а all=false - просим уточнить, а не угадываем."""
-    found = find_items(session.events, q)
-    if not found:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Не найдено ничего похожего на «{q}»")
-    if len(found) > 1 and not all_matches:
-        names = ", ".join(found[:MAX_SUGGESTIONS])
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, f"Под «{q}» подходит несколько: {names}. Уточните"
-        )
-
+    check_items(session.events, q, all_matches)
     detail = item_detail(session.events, q, all_matches=all_matches)
     last_month = detail["последний_месяц"]
     return ItemDetail(
@@ -214,12 +314,8 @@ def compare(
 ) -> Comparison:
     """Было и стало: итог, изменение в деньгах и %, в среднем за день.
     Период за пределами данных - предупреждение: сравнение может быть нечестным."""
-    for start, end in ((first_from, first_to), (second_from, second_to)):
-        if start > end:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Начало периода ({start:%d.%m.%Y}) позже конца ({end:%d.%m.%Y})",
-            )
+    check_period(first_from, first_to)
+    check_period(second_from, second_to)
     result = compare_periods(
         session.events,
         (first_from.isoformat(), first_to.isoformat()),
@@ -227,7 +323,7 @@ def compare(
     )
     first = period_total(first_from, first_to, result["было"])
     second = period_total(second_from, second_to, result["стало"])
-    return Comparison(
+    comparison = Comparison(
         currency=session.currency,
         first=first,
         second=second,
@@ -236,6 +332,25 @@ def compare(
         per_day_change_percent=percent_change(first.per_day, second.per_day),
         warnings=result["предупреждения"],
     )
+    # Разбивка по товарам - если товар размечен: что выросло, что просело
+    if "object" in available_fields(session.events):
+        table = compare_breakdown(
+            session.events,
+            (first_from.isoformat(), first_to.isoformat()),
+            (second_from.isoformat(), second_to.isoformat()),
+        )
+        comparison.by_label = FIELDS["object"]
+        comparison.rows = [
+            CompareRow(
+                name=str(name),
+                first=float(row["было"]),
+                second=float(row["стало"]),
+                change=float(row["изменение"]),
+                change_percent=percent_change(row["было"], row["стало"]),
+            )
+            for name, row in table.iterrows()
+        ]
+    return comparison
 
 
 def forecast_points(table: pd.DataFrame) -> list[ForecastPoint]:
