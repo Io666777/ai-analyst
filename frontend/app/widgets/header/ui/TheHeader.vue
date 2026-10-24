@@ -32,6 +32,7 @@ const LINKS = [
   { to: ROUTES.overview, label: 'Обзор' },
   { to: ROUTES.top, label: 'Топ' },
   { to: ROUTES.item, label: 'Товар' },
+  { to: ROUTES.compare, label: 'Сравнение' },
 ] as const;
 
 const session = useSession();

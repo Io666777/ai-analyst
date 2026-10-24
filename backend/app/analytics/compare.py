@@ -21,7 +21,8 @@ def compare_periods(
     # Предупреждаем, если период выходит за пределы данных - сравнение будет нечестным
     data_start, data_end = events["date"].min(), events["date"].max()
     warnings = [
-        f"Период {start} - {end} выходит за пределы данных "
+        f"Период {pd.Timestamp(start):%d.%m.%Y} - {pd.Timestamp(end):%d.%m.%Y} "
+        "выходит за пределы данных "
         f"({data_start:%d.%m.%Y} - {data_end:%d.%m.%Y}), сравнение может быть неверным"
         for start, end in (first, second)
         if pd.Timestamp(start) < data_start.normalize() or pd.Timestamp(end) > data_end
