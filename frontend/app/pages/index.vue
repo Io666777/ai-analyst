@@ -16,16 +16,26 @@
       Данные удалены с сервера после 30 минут без работы: так они не хранятся дольше нужного.
     </VAlert>
 
+    <!-- 1. Файл ещё не открыт -->
     <VCard v-if="!session.isOpened.value" title="Откройте выгрузку продаж">
       <UploadFile />
-      <p :class="$style.privacy">
+      <p :class="$style.note">
         Файл обрабатывается в памяти сервера и никуда не сохраняется. Данные удаляются
         через 30 минут без работы или сразу - по кнопке «Удалить мои данные».
       </p>
     </VCard>
 
+    <!-- 2-3. Файл открыт: разметка или отчёт о подготовке -->
     <VCard v-else :title="session.state.value.fileName ?? undefined">
       <template #actions>
+        <VButton
+          v-if="session.isPrepared.value && !isEditingMapping"
+          :variant="BUTTON_VARIANTS.ghost"
+          :size="BUTTON_SIZES.small"
+          @click="isEditingMapping = true"
+        >
+          Изменить разметку
+        </VButton>
         <VButton
           :variant="BUTTON_VARIANTS.ghost"
           :size="BUTTON_SIZES.small"
@@ -36,22 +46,34 @@
         </VButton>
       </template>
 
-      <p :class="$style.summary">
+      <p :class="$style.note">
         {{ pluralize(session.state.value.rows, ROW_FORMS) }},
         {{ pluralize(session.state.value.columns.length, COLUMN_FORMS) }}
       </p>
-      <SessionColumns :columns="session.state.value.columns" />
+
+      <MapColumns
+        v-if="!session.isPrepared.value || isEditingMapping"
+        :cancelable="isEditingMapping"
+        @done="isEditingMapping = false"
+        @cancel="isEditingMapping = false"
+      />
+
+      <template v-else-if="session.state.value.prepared">
+        <PreparationReport :prepared="session.state.value.prepared" :field-labels="fieldLabels" />
+        <VAlert :variant="ALERT_VARIANTS.success" title="Данные готовы к анализу">
+          Дальше - настройки и разделы: обзор, топ, товар, сравнение периодов, прогноз.
+        </VAlert>
+      </template>
+
       <VAlert v-if="forgetError" :variant="ALERT_VARIANTS.error">{{ forgetError }}</VAlert>
-      <VAlert>
-        Следующий шаг - разметка колонок: укажите, где дата, товар и сумма.
-      </VAlert>
     </VCard>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { SessionColumns, useSession } from '~/entities/session';
+import { computed, onMounted, ref } from 'vue';
+import { PreparationReport, useOptions, useSession } from '~/entities/session';
+import { MapColumns } from '~/features/map-columns';
 import { UploadFile } from '~/features/upload-file';
 import { toApiError } from '~/shared/api';
 import { pluralize, type WordForms } from '~/shared/lib';
@@ -68,9 +90,25 @@ const ROW_FORMS: WordForms = { one: 'строка', few: 'строки', many: '
 const COLUMN_FORMS: WordForms = { one: 'колонка', few: 'колонки', many: 'колонок' };
 
 const session = useSession();
+const { options, loadOptions } = useOptions();
 
+const isEditingMapping = ref(false);
 const isForgetting = ref(false);
 const forgetError = ref<string | null>(null);
+
+// Подписи полей в отчёте - из справочника ролей: amount → "сумма, деньги"
+const fieldLabels = computed<Record<string, string>>(() =>
+  Object.fromEntries((options.value?.roles ?? []).map(role => [role.value, role.label])),
+);
+
+onMounted(async () => {
+  // Справочник нужен для подписей в отчёте; не загрузился - покажем названия полей как есть
+  try {
+    await loadOptions();
+  } catch {
+    // подписи - не главное: отчёт виден и без них
+  }
+});
 
 /** «Удалить мои данные»: на сервере и в браузере - и снова экран загрузки. */
 async function handleForget(): Promise<void> {
@@ -78,6 +116,7 @@ async function handleForget(): Promise<void> {
   isForgetting.value = true;
   try {
     await session.forget();
+    isEditingMapping.value = false;
   } catch (error) {
     forgetError.value = toApiError(error).message;
   } finally {
@@ -106,8 +145,7 @@ async function handleForget(): Promise<void> {
   color: var(--base-700);
 }
 
-.privacy,
-.summary {
+.note {
   color: var(--base-500);
 
   @include text(small);
