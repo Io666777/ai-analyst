@@ -4,6 +4,7 @@ export * from './VButton';
 export * from './VCard';
 export * from './VChart';
 export * from './VCheckbox';
+export * from './VFileDrop';
 export * from './VFormField';
 export * from './VInput';
 export * from './VMetric';

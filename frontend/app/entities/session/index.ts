@@ -6,3 +6,4 @@ export {
   type UseSession,
   useSession,
 } from './model/useSession';
+export { default as SessionColumns } from './ui/SessionColumns.vue';
