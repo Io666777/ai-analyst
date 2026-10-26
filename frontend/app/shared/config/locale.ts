@@ -1,0 +1,11 @@
+/** Язык форматирования чисел и дат: пробел между тысячами, запятая в дробях. */
+export const LOCALE = 'ru-RU';
+
+/** Что показать вместо отсутствующего значения (например, процент, когда было 0). */
+export const EMPTY_VALUE = '—';
+
+/** Валюта по умолчанию - как на сервере (app/config.py). */
+export const DEFAULT_CURRENCY = 'р.';
+
+/** Страна праздников по умолчанию - как на сервере (app/forecast/models.py). */
+export const DEFAULT_COUNTRY = 'BY';

@@ -1,0 +1,53 @@
+// Минимальный сброс браузерных стилей. Глобальные правила - только здесь,
+// всё остальное - в CSS-модулях компонентов
+
+@use 'typography' as *;
+@use 'mixins' as *;
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: $font-family;
+  color: var(--base-900);
+  background: var(--base-50);
+}
+
+body {
+  margin: 0;
+
+  @include text(body);
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
