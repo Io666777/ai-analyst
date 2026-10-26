@@ -1,4 +1,5 @@
-# Настройка Render: по этому файлу он сам создаёт сервис (New -> Blueprint)
+# Настройка Render: по этому файлу он сам создаёт сервисы (New -> Blueprint).
+# Два сервиса: API (считает) и статический сайт (показывает)
 services:
   - type: web
     name: ai-analyst
@@ -6,12 +7,36 @@ services:
     plan: free
     rootDir: backend # программа лежит в папке backend
     buildCommand: pip install -r requirements-deploy.txt
-    # $PORT выдаёт Render; headless - не открывать браузер и не спрашивать почту;
-    # gatherUsageStats - не отправлять статистику в Streamlit
-    startCommand: >-
-      python -m streamlit run app/web/page.py
-      --server.port $PORT --server.address 0.0.0.0
-      --server.headless true --browser.gatherUsageStats false
+    # API на FastAPI; $PORT выдаёт Render
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health # Render проверяет, что сервер жив
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.7 # как в нашем venv
+      - key: FRONTEND_URL # адрес сайта - только ему разрешены запросы из браузера
+        sync: false # вписывается в панели Render: https://<адрес сайта>.onrender.com
+
+  # Сайт: Nuxt собирается в обычные файлы (nuxt generate) и раздаётся с CDN -
+  # бесплатно и не засыпает, в отличие от API
+  - type: web
+    name: ai-analyst-site
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run generate
+    staticPublishPath: .output/public
+    envVars:
+      - key: NODE_VERSION
+        value: 22.21.1 # как локально
+      - key: NUXT_PUBLIC_API_URL # адрес API - подставляется в сайт при сборке
+        sync: false # вписывается в панели Render: https://<адрес API>.onrender.com
+    # Файлы из _nuxt с хешем в имени не меняются никогда - браузер хранит их год
+    # и при повторном заходе не скачивает заново (это ещё и баллы Lighthouse)
+    headers:
+      - path: /_nuxt/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    # Адрес, которого нет среди файлов, - всё равно наше приложение: роутинг решит сам
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /200.html

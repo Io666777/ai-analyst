@@ -8,12 +8,18 @@ venv/
 
 # Данные
 backend/data/real/
-backend/data/uploads/
 *.db
 
 # Графики, сохранённые из ноутбуков (для курсовой и т.п.) - пересоздаются запуском ноутбука
 backend/notebooks/*.png
 backend/notebooks/figures/
+
+# Фронт: зависимости и сборка. Дублирует frontend/.gitignore - чтобы не попали в git
+# в ветках, где самого фронта ещё нет
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
 
 # Служебное Python
 __pycache__/

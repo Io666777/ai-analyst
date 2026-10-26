@@ -254,7 +254,7 @@ def generate_salon(rng: np.random.Generator) -> None:
             "Услуга": "object",
             "Мастер": "executor",
             "Клиент": "person",
-            "Телефон": "phone",
+            "Телефон": "person",  # тоже личные данные: роли из справочника /api/options
             "Стоимость": "amount",
         },
     )

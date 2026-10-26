@@ -2,8 +2,29 @@
 
 import pandas as pd
 
-from app.analytics.periods import month_name, period_total
+from app.analytics.periods import between, month_name, period_total
 from app.data import require_field
+
+
+def compare_breakdown(
+    events: pd.DataFrame,
+    first: tuple[str, str],
+    second: tuple[str, str],
+    by: str = "object",
+    value: str = "amount",
+    top: int = 10,
+) -> pd.DataFrame:
+    # Было и стало по каждому товару (категории, бренду...): кто вырос, кто просел.
+    # Берём top самых заметных - с наибольшей выручкой хотя бы в одном из периодов;
+    # товар, которого не было в одном периоде, - честный ноль, а не пропуск
+    require_field(events, by)
+    require_field(events, value, numeric=True)
+    before = between(events, *first).groupby(by)[value].sum()
+    after = between(events, *second).groupby(by)[value].sum()
+    table = pd.DataFrame({"было": before, "стало": after}).fillna(0)
+    table["изменение"] = table["стало"] - table["было"]
+    biggest = table[["было", "стало"]].max(axis=1).sort_values(ascending=False)
+    return table.loc[biggest.index[:top]].round(2)
 
 
 def compare_periods(
@@ -21,7 +42,8 @@ def compare_periods(
     # Предупреждаем, если период выходит за пределы данных - сравнение будет нечестным
     data_start, data_end = events["date"].min(), events["date"].max()
     warnings = [
-        f"Период {start} - {end} выходит за пределы данных "
+        f"Период {pd.Timestamp(start):%d.%m.%Y} - {pd.Timestamp(end):%d.%m.%Y} "
+        "выходит за пределы данных "
         f"({data_start:%d.%m.%Y} - {data_end:%d.%m.%Y}), сравнение может быть неверным"
         for start, end in (first, second)
         if pd.Timestamp(start) < data_start.normalize() or pd.Timestamp(end) > data_end
