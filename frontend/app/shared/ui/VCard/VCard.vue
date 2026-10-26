@@ -52,6 +52,10 @@ const titleId = useId();
 <style lang="scss" module>
 .VCard {
   display: grid;
+
+  // Колонка - по ширине карточки, а не по содержимому: широкая таблица прокручивается
+  // внутри себя, а не распирает карточку (и страницу на телефоне)
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   min-width: 0;
   padding: var(--space-5);

@@ -284,6 +284,22 @@ def test_search_items(shop):
     assert by_article["items"] == ["Пиво Лидское 0.5"]  # по артикулу - точно одна позиция
 
 
+def test_catalog(shop):
+    # Все 7 товаров магазина, от самых продаваемых; доли в сумме - вся выручка
+    body = client.get("/api/analysis/catalog", headers=shop).json()
+    assert body["total"] == 7
+    assert len(body["items"]) == 7
+    assert body["items"][0]["name"] == "Пиво Лидское 0.5"
+    values = [item["value"] for item in body["items"]]
+    assert values == sorted(values, reverse=True)
+    assert sum(item["share_percent"] for item in body["items"]) == pytest.approx(100, abs=0.5)
+
+
+def test_catalog_without_items(short_history):
+    response = client.get("/api/analysis/catalog", headers=short_history)
+    assert response.status_code == 400
+
+
 def test_search_items_empty_query(shop):
     assert client.get("/api/analysis/items", params={"q": ""}, headers=shop).status_code == 422
 
@@ -409,6 +425,16 @@ def test_forecast_full(shop):
     assert body["total"] == pytest.approx(sum(p["value"] for p in body["points"]), abs=1)
     assert body["accuracy"]["reasons"]  # причины точности есть всегда
     assert body["message"].startswith(f"Прогноз на {body['horizon_days']} дн.")
+
+    # Крупнее дней: недели и месяцы в сумме - тот же итог
+    for periods in (body["weeks"], body["months"]):
+        assert sum(p["value"] for p in periods) == pytest.approx(body["total"], abs=1)
+    assert body["weeks"][0]["date_from"] == "2026-10-01"
+    # Два года истории - есть с чем сравнить год назад
+    assert body["year_ago"]["value"] > 0
+    # Экзамен моделей: выбранная - первая и одна
+    assert [score["chosen"] for score in body["models"]] == [True, False]
+    assert body["models"][0]["model"] == body["model"]
 
 
 def test_forecast_is_computed_once(shop, monkeypatch):

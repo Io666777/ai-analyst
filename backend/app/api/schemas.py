@@ -193,6 +193,15 @@ class Top(BaseModel):
 # ---------- анализ: товар ----------
 
 
+class Catalog(BaseModel):
+    # Все товары - для списка под поиском: фильтруется на фронте по мере ввода
+    currency: str
+    total: int = Field(description="Сколько товаров всего")
+    items: list[TopRow] = Field(
+        description="Товары от самых продаваемых; не больше 5000 - дальше список не листают"
+    )
+
+
 class ItemsFound(BaseModel):
     # Подсказки при вводе названия
     query: str = Field(examples=["пиво"])
@@ -303,6 +312,31 @@ class Accuracy(BaseModel):
     reasons: list[str] = Field(description="Почему такая точность - вычислено из данных")
 
 
+class ForecastPeriod(BaseModel):
+    # Прогноз за неделю или месяц - строка таблицы «сколько ждать»
+    date_from: date = Field(description="С какого дня (крайние периоды бывают неполными)")
+    date_to: date
+    value: float = Field(description="Ожидаемая выручка за период")
+    lower: float | None = Field(description="Нижняя граница коридора; нет - у простого прогноза")
+    upper: float | None = None
+
+
+class YearAgo(BaseModel):
+    # Тот же период год назад (52 недели - дни недели совпадают)
+    date_from: date
+    date_to: date
+    value: float = Field(description="Выручка тогда")
+    change_percent: float | None = Field(description="Прогноз против тогда, %; нет - было 0")
+
+
+class ModelScore(BaseModel):
+    # Экзамен модели на прошлом - на том же горизонте, что и прогноз
+    model: str = Field(examples=["Prophet"])
+    error_percent: float = Field(description="Ошибка по дням, % (WAPE)")
+    total_error_percent: float = Field(description="Ошибка итога за период, % (+ завысила)")
+    chosen: bool = Field(description="Эта модель выбрана для прогноза")
+
+
 class Estimate(BaseModel):
     # Ступенька "оценка": простые средние вместо прогноза
     per_day: float = Field(description="В среднем в день за последние 2 недели")
@@ -328,4 +362,12 @@ class Forecast(BaseModel):
         default_factory=list, description="Конец истории по дням - для графика «факт + прогноз»"
     )
     points: list[ForecastPoint] = Field(default_factory=list, description="Прогноз по дням")
+    weeks: list[ForecastPeriod] = Field(default_factory=list, description="Прогноз по неделям")
+    months: list[ForecastPeriod] = Field(default_factory=list, description="Прогноз по месяцам")
+    year_ago: YearAgo | None = Field(
+        default=None, description="Тот же период год назад; нет - истории меньше года"
+    )
+    models: list[ModelScore] = Field(
+        default_factory=list, description="Экзамен моделей: лучшая (выбранная) - первой"
+    )
     estimate: Estimate | None = None

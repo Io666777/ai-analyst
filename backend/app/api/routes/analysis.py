@@ -23,23 +23,27 @@ from app.analytics import (
 from app.api.dependencies import PreparedSession
 from app.api.schemas import (
     Accuracy,
+    Catalog,
     Choice,
     CompareRow,
     Comparison,
     Daily,
     Estimate,
     Forecast,
+    ForecastPeriod,
     ForecastPoint,
     ItemDay,
     ItemDays,
     ItemDetail,
     ItemsFound,
+    ModelScore,
     MonthSummary,
     Overview,
     PeriodTotal,
     SeriesPoint,
     Top,
     TopRow,
+    YearAgo,
 )
 from app.api.sessions import Session
 from app.data import FIELDS, available_fields, numeric_fields
@@ -193,6 +197,26 @@ def top(
         total=round(float(events["amount"].sum()), 2),
         available=available,
         rows=[
+            TopRow(name=str(name), value=float(row["amount"]), share_percent=float(row["доля_%"]))
+            for name, row in table.iterrows()
+        ],
+    )
+
+
+MAX_CATALOG = 5000  # больше товаров в списке не листают - их ищут по названию или артикулу
+
+
+@router.get("/catalog", summary="Все товары - список под поиском")
+def catalog(session: PreparedSession) -> Catalog:
+    """Все товары с выручкой и долей, от самых продаваемых. Фронт фильтрует список сам
+    на каждую букву - без запроса на сервер."""
+    if "object" not in available_fields(session.events):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В данных нет колонки с товаром")
+    table = breakdown(session.events, by="object", top=MAX_CATALOG)
+    return Catalog(
+        currency=session.currency,
+        total=int(session.events["object"].nunique()),
+        items=[
             TopRow(name=str(name), value=float(row["amount"]), share_percent=float(row["доля_%"]))
             for name, row in table.iterrows()
         ],
@@ -402,7 +426,41 @@ def build_forecast(session: Session) -> Forecast:
     )
     response.history = to_points(history, DAY_FORMAT)
     response.points = forecast_points(result["прогноз"])
+    response.weeks = forecast_periods(result["по_неделям"])
+    response.months = forecast_periods(result["по_месяцам"])
+    if result["год_назад"]:
+        ago = result["год_назад"]
+        response.year_ago = YearAgo(
+            date_from=ago["с"].date(),
+            date_to=ago["по"].date(),
+            value=ago["было"],
+            change_percent=ago["изменение_%"],
+        )
+    response.models = [
+        ModelScore(
+            model=score["модель"],
+            error_percent=round(score["ошибка_%"], 1),
+            total_error_percent=round(score["ошибка_итога_%"], 1),
+            chosen=score["модель"] == result["модель"],
+        )
+        for score in result["экзамен"]
+    ]
     return response
+
+
+def forecast_periods(table: pd.DataFrame) -> list[ForecastPeriod]:
+    # Прогноз по неделям или месяцам (forecast_by) -> строки для фронта
+    has_corridor = "yhat_lower" in table
+    return [
+        ForecastPeriod(
+            date_from=row["с"].date(),
+            date_to=row["по"].date(),
+            value=float(row["yhat"]),
+            lower=float(row["yhat_lower"]) if has_corridor else None,
+            upper=float(row["yhat_upper"]) if has_corridor else None,
+        )
+        for _, row in table.iterrows()
+    ]
 
 
 @router.post("/forecast", summary="Прогноз: посчитать или отдать уже посчитанный")

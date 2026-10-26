@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
   daily: '/analysis/daily',
   top: '/analysis/top',
   items: '/analysis/items',
+  catalog: '/analysis/catalog',
   item: '/analysis/item',
   itemDays: '/analysis/item/days',
   compare: '/analysis/compare',

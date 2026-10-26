@@ -6,6 +6,7 @@
 import pandas as pd
 
 from app.config import CURRENCY, FORECAST_DAYS
+from app.forecast.breakdown import forecast_by, year_ago
 from app.forecast.horizon import choose_horizon, horizon_scan
 from app.forecast.models import COUNTRY, WEEK_DAYS, models_for, to_daily
 from app.forecast.report import money, quality_report
@@ -107,6 +108,18 @@ def make_forecast(
         "точность": quality_report(
             daily, comparison, model=model_name, country=country, currency=currency
         ),
+        # Экзамен всех моделей на том же горизонте - видно, почему выбрана эта
+        "экзамен": [
+            {
+                "модель": str(name),
+                "ошибка_%": float(row["WAPE_%"]),
+                "ошибка_итога_%": float(row["ошибка_итога_%"]),
+            }
+            for name, row in comparison.iterrows()
+        ],
+        "по_неделям": forecast_by(forecast, "неделя"),
+        "по_месяцам": forecast_by(forecast, "месяц"),
+        "год_назад": year_ago(daily, forecast),
     }
     if "yhat_lower" in forecast:  # коридор есть не у всех моделей
         result["коридор"] = (

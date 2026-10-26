@@ -63,7 +63,17 @@
               label="Ожидаемая выручка"
               :value="data.total"
               :currency="data.currency"
+              :change="data.year_ago ? data.year_ago.change_percent : undefined"
+              :change-label="data.year_ago ? 'к тем же дням год назад' : undefined"
               :hint="corridorHint"
+            />
+            <!-- Год назад: те же дни недели, 52 недели назад - честное сравнение с сезоном -->
+            <VMetric
+              v-if="data.year_ago"
+              label="Год назад за те же дни"
+              :value="data.year_ago.value"
+              :currency="data.currency"
+              :hint="`${formatDate(data.year_ago.date_from)} - ${formatDate(data.year_ago.date_to)}`"
             />
             <div v-if="data.accuracy" :class="$style.accuracy">
               <p :class="$style.note">Точность</p>
@@ -98,6 +108,14 @@
             Клик по названию в легенде прячет линию.
           </p>
         </VCard>
+
+        <VCard v-if="data.weeks.length" title="Сколько ждать">
+          <ForecastPeriods :weeks="data.weeks" :months="data.months" :currency="data.currency" />
+        </VCard>
+
+        <VCard v-if="data.models.length > 1" title="Как выбрана модель">
+          <ModelExam :models="data.models" />
+        </VCard>
       </template>
 
       <div>
@@ -130,6 +148,8 @@ import {
 } from '~/shared/ui';
 import { forecastChartOption } from '../lib/forecast-chart';
 import { useForecast } from '../model/useForecast';
+import ForecastPeriods from './ForecastPeriods.vue';
+import ModelExam from './ModelExam.vue';
 
 /** Ступеньки холодного старта - как в ответе сервера (step). */
 const STEPS = { none: 'none', estimate: 'estimate', forecast: 'forecast' } as const;

@@ -102,6 +102,7 @@ async function handleKeydown(event: KeyboardEvent, index: number): Promise<void>
 <style lang="scss" module>
 .VTabs {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); // широкое содержимое не распирает вкладки
   gap: var(--space-3);
 }
 

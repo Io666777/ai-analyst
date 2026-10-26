@@ -206,6 +206,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Все товары - список под поиском
+         * @description Все товары с выручкой и долей, от самых продаваемых. Фронт фильтрует список сам
+         *     на каждую букву - без запроса на сервер.
+         */
+        get: operations["catalog_api_analysis_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/items": {
         parameters: {
             query?: never;
@@ -362,6 +383,21 @@ export interface components {
         Body_upload_file_api_files_post: {
             /** File */
             file: string;
+        };
+        /** Catalog */
+        Catalog: {
+            /** Currency */
+            currency: string;
+            /**
+             * Total
+             * @description Сколько товаров всего
+             */
+            total: number;
+            /**
+             * Items
+             * @description Товары от самых продаваемых; не больше 5000 - дальше список не листают
+             */
+            items: components["schemas"]["TopRow"][];
         };
         /** Choice */
         Choice: {
@@ -618,7 +654,50 @@ export interface components {
              * @description Прогноз по дням
              */
             points?: components["schemas"]["ForecastPoint"][];
+            /**
+             * Weeks
+             * @description Прогноз по неделям
+             */
+            weeks?: components["schemas"]["ForecastPeriod"][];
+            /**
+             * Months
+             * @description Прогноз по месяцам
+             */
+            months?: components["schemas"]["ForecastPeriod"][];
+            /** @description Тот же период год назад; нет - истории меньше года */
+            year_ago?: components["schemas"]["YearAgo"] | null;
+            /**
+             * Models
+             * @description Экзамен моделей: лучшая (выбранная) - первой
+             */
+            models?: components["schemas"]["ModelScore"][];
             estimate?: components["schemas"]["Estimate"] | null;
+        };
+        /** ForecastPeriod */
+        ForecastPeriod: {
+            /**
+             * Date From
+             * Format: date
+             * @description С какого дня (крайние периоды бывают неполными)
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Value
+             * @description Ожидаемая выручка за период
+             */
+            value: number;
+            /**
+             * Lower
+             * @description Нижняя граница коридора; нет - у простого прогноза
+             */
+            lower: number | null;
+            /** Upper */
+            upper?: number | null;
         };
         /** ForecastPoint */
         ForecastPoint: {
@@ -788,6 +867,29 @@ export interface components {
             mapping: {
                 [key: string]: string;
             };
+        };
+        /** ModelScore */
+        ModelScore: {
+            /**
+             * Model
+             * @example Prophet
+             */
+            model: string;
+            /**
+             * Error Percent
+             * @description Ошибка по дням, % (WAPE)
+             */
+            error_percent: number;
+            /**
+             * Total Error Percent
+             * @description Ошибка итога за период, % (+ завысила)
+             */
+            total_error_percent: number;
+            /**
+             * Chosen
+             * @description Эта модель выбрана для прогноза
+             */
+            chosen: boolean;
         };
         /** MonthSummary */
         MonthSummary: {
@@ -1122,6 +1224,29 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** YearAgo */
+        YearAgo: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Value
+             * @description Выручка тогда
+             */
+            value: number;
+            /**
+             * Change Percent
+             * @description Прогноз против тогда, %; нет - было 0
+             */
+            change_percent: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1428,6 +1553,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Top"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalog_api_analysis_catalog_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Номер сессии, который вернула загрузка файла */
+                "x-session-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalog"];
                 };
             };
             /** @description Validation Error */
