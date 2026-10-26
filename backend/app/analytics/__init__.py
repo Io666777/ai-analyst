@@ -10,16 +10,19 @@
 """
 
 from app.analytics.compare import (
+    compare_breakdown,
     compare_periods,
     last_full_month,
     last_full_month_vs_previous,
     month_bounds,
 )
-from app.analytics.items import find_item, find_items, item_detail
+from app.analytics.items import find_item, find_items, item_days, item_detail, item_names
 from app.analytics.periods import (
     MONTH_NAMES,
     PERIODS,
+    between,
     by_period,
+    daily_totals,
     incomplete_periods,
     month_name,
     period_total,
@@ -29,13 +32,18 @@ from app.analytics.top import breakdown
 __all__ = [
     "MONTH_NAMES",
     "PERIODS",
+    "between",
     "breakdown",
     "by_period",
+    "compare_breakdown",
     "compare_periods",
+    "daily_totals",
     "find_item",
     "find_items",
     "incomplete_periods",
+    "item_days",
     "item_detail",
+    "item_names",
     "last_full_month",
     "last_full_month_vs_previous",
     "month_bounds",

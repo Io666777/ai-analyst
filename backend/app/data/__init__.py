@@ -3,6 +3,7 @@
 Разложена по шагам:
     loader  - загрузка Excel и CSV "как есть"
     cleaner - очистка: даты, числа, строки "Итого"
+    detect  - автоопределение ролей колонок правилами: по названию и значениям
     model   - универсальная модель: одинаковые колонки для любого бизнеса, роли колонок
     prepare - все шаги сразу: файл (или таблица) -> события
 
@@ -10,6 +11,7 @@
 """
 
 from app.data.cleaner import TOTAL_WORDS, clean, drop_totals, strip_text, to_date, to_number
+from app.data.detect import detect_roles
 from app.data.loader import (
     CSV_ENCODINGS,
     EXCEL_SUFFIXES,
@@ -58,6 +60,7 @@ __all__ = [
     "available_fields",
     "clean",
     "column_names",
+    "detect_roles",
     "drop_totals",
     "exclude_objects",
     "extra_fields",

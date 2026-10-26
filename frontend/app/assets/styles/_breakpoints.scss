@@ -1,0 +1,8 @@
+// Брейкпоинты: до какой ширины экрана включительно. Те же числа - в shared/config/breakpoints.ts
+// mobile - до 767px, tablet - до 1279px, laptop - до 1439px, дальше - desktop
+
+$breakpoints: (
+  mobile: 47.9375rem,
+  tablet: 79.9375rem,
+  laptop: 89.9375rem,
+);

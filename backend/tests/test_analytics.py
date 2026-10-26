@@ -129,7 +129,7 @@ def test_compare_periods_partial_month_warns(events):
     # Данные начинаются 10 января: январь покрыт не целиком - честное предупреждение
     result = compare_periods(events, ("2026-01-01", "2026-01-31"), ("2026-03-01", "2026-03-31"))
     assert result["изменение_%"] == 100.0  # 150 -> 300
-    assert "2026-01-01" in result["предупреждения"][0]
+    assert "01.01.2026" in result["предупреждения"][0]
 
 
 def test_compare_periods_zero_before(events):
@@ -143,6 +143,7 @@ def test_compare_periods_warns_beyond_data(events):
     # Весь апрель, а данные только по 15 апреля
     result = compare_periods(events, ("2026-03-01", "2026-03-31"), ("2026-04-01", "2026-04-30"))
     assert "выходит за пределы данных" in result["предупреждения"][0]
+    assert "01.04.2026 - 30.04.2026" in result["предупреждения"][0]  # даты - как везде в отчётах
 
 
 # ---------- last_full_month и last_full_month_vs_previous ----------
@@ -238,6 +239,19 @@ def test_find_items_several(events):
     assert find_items(events, "пиво") == ["Пиво Аливария", "Пиво Лидское"]
     with pytest.raises(ValueError, match="несколько"):
         find_item(events, "пиво")
+
+
+def test_find_items_starts_first():
+    # На "с": сначала название с этой буквы, потом слово с неё, потом буква внутри слова
+    events = make_events(
+        [
+            ("2026-01-10", "Пиво Лидское", "Напитки", "P1", 1, 10.0),
+            ("2026-01-10", "Хлеб Сельский", "Хлеб", "H1", 1, 10.0),
+            ("2026-01-10", "Сухарики", "Снеки", "S1", 1, 10.0),
+            ("2026-01-10", "Вода", "Напитки", "W1", 1, 10.0),
+        ]
+    )
+    assert find_items(events, "с") == ["Сухарики", "Хлеб Сельский", "Пиво Лидское"]
 
 
 def test_find_item_not_found(events):

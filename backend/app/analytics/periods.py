@@ -58,10 +58,27 @@ def incomplete_periods(events: pd.DataFrame, period: str = "месяц") -> list
     return result
 
 
+def between(events: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
+    # События с start по end ВКЛЮЧИТЕЛЬНО: "2025-03-01", "2025-03-31" - весь март.
+    # Берём даты раньше следующего дня после end, иначе 31.03 в 15:00 не попадёт в март.
+    # Край не задан (None) - с начала или до конца данных
+    in_period = pd.Series(True, index=events.index)
+    if start is not None:
+        in_period &= events["date"] >= pd.Timestamp(start)
+    if end is not None:
+        in_period &= events["date"] < pd.Timestamp(end) + pd.Timedelta(days=1)
+    return events[in_period]
+
+
+def daily_totals(events: pd.DataFrame, start: str, end: str, value: str = "amount") -> pd.Series:
+    # Сумма value за каждый день с start по end включительно. День без продаж - 0, а не пропуск:
+    # в таблице по дням провал должен быть виден
+    require_field(events, value, numeric=True)
+    days = pd.date_range(start, end, freq="D")
+    totals = between(events, start, end).set_index("date")[value].resample("D").sum()
+    return totals.reindex(days, fill_value=0)
+
+
 def period_total(events: pd.DataFrame, start: str, end: str, value: str = "amount") -> float:
-    # Сумма value с start по end ВКЛЮЧИТЕЛЬНО: "2025-03-01", "2025-03-31" - весь март.
-    # Берём даты раньше следующего дня после end, иначе 31.03 в 15:00 не попадёт в март
-    start_date = pd.Timestamp(start)
-    after_end = pd.Timestamp(end) + pd.Timedelta(days=1)
-    in_period = (events["date"] >= start_date) & (events["date"] < after_end)
-    return float(events.loc[in_period, value].sum())
+    # Сумма value с start по end включительно
+    return float(between(events, start, end)[value].sum())

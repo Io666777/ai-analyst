@@ -5,6 +5,7 @@
     evaluation - экзамен на прошлом: метрики ошибки, сравнение моделей
     horizon    - на сколько дней вперёд прогнозу можно верить
     report     - понятный пользователю отчёт о точности: можно ли верить и почему
+    breakdown  - прогноз по неделям и месяцам, тот же период год назад
     auto       - всё сразу (make_forecast): ступенька холодного старта, модель, горизонт
 
 Всё нужное собрано здесь, поэтому снаружи импорт короткий: from app.forecast import make_forecast
@@ -19,6 +20,7 @@ from app.forecast.auto import (
     make_forecast,
     simple_estimate,
 )
+from app.forecast.breakdown import YEAR_AGO_DAYS, forecast_by, year_ago
 from app.forecast.evaluation import EVALUATION_WINDOWS, compare_models, evaluate, window_metrics
 from app.forecast.horizon import (
     HORIZONS,
@@ -63,6 +65,7 @@ __all__ = [
     "STEP_FORECAST",
     "STEP_NONE",
     "WEEK_DAYS",
+    "YEAR_AGO_DAYS",
     "YEAR_DAYS",
     "Forecaster",
     "best_model",
@@ -73,6 +76,7 @@ __all__ = [
     "days_off",
     "days_off_note",
     "evaluate",
+    "forecast_by",
     "horizon_scan",
     "make_forecast",
     "models_for",
@@ -85,4 +89,5 @@ __all__ = [
     "to_daily",
     "total_error_text",
     "window_metrics",
+    "year_ago",
 ]
