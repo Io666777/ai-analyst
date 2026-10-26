@@ -3,8 +3,8 @@
 // где пользователь увидит «загрузите файл заново"
 import { defineNuxtPlugin, navigateTo, useRuntimeConfig } from '#imports';
 import { useSession } from '~/entities/session';
-import { configureApiClient } from '~/shared/api';
-import { ROUTES } from '~/shared/config';
+import { api, configureApiClient } from '~/shared/api';
+import { API_ENDPOINTS, ROUTES } from '~/shared/config';
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig();
@@ -18,4 +18,9 @@ export default defineNuxtPlugin(() => {
       navigateTo(ROUTES.home);
     },
   });
+
+  // Бесплатный сервер Render засыпает без запросов и просыпается до минуты. Будим его сразу
+  // при открытии сайта: пока человек выбирает файл, сервер успевает проснуться.
+  // Ответ не нужен, ошибка не важна - это только «будильник»
+  api.get(API_ENDPOINTS.health).catch(() => undefined);
 });
